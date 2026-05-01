@@ -1,3 +1,36 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Personalização do Scrollbar */
+
+@layer base {
+  /* Suporte para Firefox */
+  html {
+    scrollbar-width: thin; /* Deixa o scroll mais fininho */
+    scrollbar-color: #547558 #FAF8F5; /* Cor do puxador e cor do fundo */
+  }
+
+  /* Suporte para navegadores baseados em WebKit (Chrome, Edge, Safari) */
+  ::-webkit-scrollbar {
+    width: 12px; /* Largura da barra vertical */
+    height: 12px; /* Altura da barra horizontal (se houver) */
+  }
+
+  /* O fundo (trilho) da barra de rolagem */
+  ::-webkit-scrollbar-track {
+    background: #FAF8F5; /* Cor bege clarinha do fundo do site */
+  }
+
+  /* A barrinha que você clica e arrasta (polegar) */
+  ::-webkit-scrollbar-thumb {
+    background-color: #547558; /* Verde do template */
+    border-radius: 20px; /* Deixa as pontas bem arredondadas */
+    border: 3px solid #FAF8F5; /* Cria uma "margem" dando um efeito flutuante */
+  }
+
+  /* Efeito ao passar o mouse por cima do scroll */
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #435e46; /* Verde um pouco mais escuro */
+  }
+}
