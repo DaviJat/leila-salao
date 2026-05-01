@@ -233,7 +233,7 @@ onUnmounted(() => {
                             alt="Cortando o cabelo"
                             class="absolute bottom-0 left-0 w-3/4 h-[450px] object-cover rounded-3xl shadow-lg z-10 border-8 border-[#FAF8F5] transition-transform duration-500 hover:scale-[1.02]" />
                         <img
-                            src="/images/foto-salao.png"
+                            src="/images/foto-salao-home.png"
                             alt="Lavatório salão"
                             class="absolute top-0 right-0 w-2/3 h-[350px] object-cover rounded-3xl shadow-2xl z-20 border-8 border-[#FAF8F5] transition-transform duration-500 hover:scale-[1.02]" />
                     </div>
