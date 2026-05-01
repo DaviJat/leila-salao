@@ -17,13 +17,38 @@ defineProps({
 const isScrolled = ref(false);
 const isMobileMenuOpen = ref(false);
 
-// Função do Scroll
+// Função do Scroll da Navbar
 const handleScroll = () => {
     isScrolled.value = window.scrollY > 20;
 };
 
 onMounted(() => {
     window.addEventListener('scroll', handleScroll);
+    // Scroll Reveal
+    const observer = new IntersectionObserver(
+        (entries) => {
+            entries.forEach((entry) => {
+                // Quando o elemento entra na tela
+                if (entry.isIntersecting) {
+                    // Remove o invisível e empurrado para baixo
+                    entry.target.classList.remove('opacity-0', 'translate-y-12');
+                    // Adiciona visibilidade total e posição original
+                    entry.target.classList.add('opacity-100', 'translate-y-0');
+                    // Desativa o observador para esse elemento (anima só uma vez)
+                    observer.unobserve(entry.target);
+                }
+            });
+        },
+        {
+            threshold: 0.1, // Dispara a animação quando 10% do elemento aparece
+            rootMargin: '0px 0px -50px 0px', // Faz aparecer um pouquinho antes de chegar bem no meio da tela
+        },
+    );
+
+    // Pega todos os elementos que têm a classe 'reveal' e coloca o observador neles
+    document.querySelectorAll('.reveal').forEach((el) => {
+        observer.observe(el);
+    });
 });
 
 onUnmounted(() => {
@@ -34,7 +59,7 @@ onUnmounted(() => {
 <template>
     <Head title="Cabeleila - Salão de Beleza" />
 
-    <div class="min-h-screen bg-[#FAF8F5] font-sans text-gray-800 antialiased overflow-x-hidden relative">
+    <div class="min-h-screen bg-[#FAF8F5] font-sans text-gray-800 antialiased relative">
         <!-- Cabeçalho -->
         <header class="fixed top-0 inset-x-0 z-50 transition-all duration-500" :class="isScrolled ? 'bg-white shadow-md' : 'bg-white shadow-sm lg:bg-transparent lg:shadow-none'">
             <!-- Navbar Dinâmica -->
@@ -83,7 +108,6 @@ onUnmounted(() => {
                     <button
                         @click="isMobileMenuOpen = !isMobileMenuOpen"
                         class="text-gray-600 hover:text-[#547558] focus:outline-none p-2 relative w-10 h-10 flex items-center justify-center">
-                        <!-- Ícone de Menu (Hámburguer) x (Fechar) com Transição -->
                         <transition
                             enter-active-class="transition duration-300 ease-out absolute"
                             enter-from-class="opacity-0 -rotate-90 scale-50"
@@ -152,16 +176,17 @@ onUnmounted(() => {
                 </div>
             </transition>
         </header>
+
         <!-- Conteúdo Principal -->
         <main>
             <!-- Hero -->
             <section
                 id="inicio"
-                class="relative pt-36 md:pt-44 pb-16 lg:pt-52 lg:pb-40 px-6 lg:px-12"
+                class="relative pt-32 md:pt-44 pb-16 lg:pt-52 lg:pb-40 px-6 lg:px-12"
                 style="background-image: url('/images/background-hero.png'); background-size: cover; background-position: center; background-repeat: no-repeat">
                 <div class="mx-auto max-w-7xl grid lg:grid-cols-3 gap-12 items-center relative z-10">
-                    <!-- Conteúdo Esquerda -->
-                    <div class="max-w-xl lg:col-span-2">
+                    <!-- Conteúdo Esquerda (Com Reveal) -->
+                    <div class="max-w-xl lg:col-span-2 reveal opacity-0 translate-y-12 transition-all duration-1000 ease-out">
                         <p class="text-[#547558] text-xl font-semibold mb-4">Seu Salão de Beleza Exclusivo</p>
                         <h1 class="text-5xl lg:text-7xl font-bold text-gray-800 leading-[1.1] mb-6">
                             Cabelos Incríveis, <br />
@@ -194,16 +219,15 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- Div Vazia Direita (com 'hidden lg:block' para sumir no celular) -->
                     <div class="hidden lg:block relative h-[550px] pointer-events-none"></div>
                 </div>
             </section>
 
             <!-- Sobre Nós -->
-            <section id="sobre" class="py-24 bg-[#FAF8F5]">
+            <section id="sobre" class="py-16 lg:py-24 bg-[#FAF8F5]">
                 <div class="mx-auto max-w-7xl px-6 lg:px-12 grid lg:grid-cols-2 gap-16 items-center">
-                    <!-- Imagens Sobrepostas -->
-                    <div class="relative h-[600px] hidden md:block">
+                    <!-- Imagens Sobrepostas (Com Reveal Animado) -->
+                    <div class="relative h-[600px] hidden md:block reveal opacity-0 translate-y-12 transition-all duration-1000 ease-out">
                         <img
                             src="/images/cortando-cabelo.png"
                             alt="Cortando o cabelo"
@@ -214,8 +238,8 @@ onUnmounted(() => {
                             class="absolute top-0 right-0 w-2/3 h-[350px] object-cover rounded-3xl shadow-2xl z-20 border-8 border-[#FAF8F5] transition-transform duration-500 hover:scale-[1.02]" />
                     </div>
 
-                    <!-- Conteúdo de Texto -->
-                    <div>
+                    <!-- Conteúdo de Texto (Com Reveal Animado e Delay) -->
+                    <div class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-200 ease-out">
                         <p class="text-[#547558] text-xl font-semibold mb-4">Sobre o Cabeleila</p>
                         <h2 class="text-4xl lg:text-5xl font-bold text-gray-800 leading-tight mb-6">Empoderando sua autoestima com cuidado expert</h2>
                         <p class="text-gray-700 mb-10 text-md leading-relaxed">
@@ -302,7 +326,6 @@ onUnmounted(() => {
                             No Cabeleila, cada cliente é único. Venha tomar um café conosco e descubra como podemos elevar a sua identidade visual ao próximo nível.
                         </p>
 
-                        <!-- Ação e Assinatura -->
                         <div class="flex items-center gap-6">
                             <a
                                 href="#contato"
@@ -318,18 +341,21 @@ onUnmounted(() => {
             </section>
 
             <!-- Serviços -->
-            <section id="servicos" class="py-24 bg-white">
+            <section id="servicos" class="py-16 lg:py-24 bg-white">
                 <div class="mx-auto max-w-7xl px-6 lg:px-12 text-center">
-                    <p class="text-[#547558] text-xl font-semibold mb-4">Nossos Serviços</p>
-                    <h2 class="text-4xl lg:text-5xl font-bold text-gray-800 mb-6">Realce sua Beleza com Especialistas</h2>
-                    <p class="text-gray-700 max-w-2xl mx-auto mb-16 text-md leading-relaxed">
+                    <p class="reveal opacity-0 translate-y-12 transition-all duration-1000 ease-out text-[#547558] text-xl font-semibold mb-4">Nossos Serviços</p>
+                    <h2 class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-100 ease-out text-4xl lg:text-5xl font-bold text-gray-800 mb-6">
+                        Realce sua Beleza com Especialistas
+                    </h2>
+                    <p class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-200 ease-out text-gray-700 max-w-2xl mx-auto mb-16 text-md leading-relaxed">
                         Conheça nosso portfólio de serviços desenvolvidos para cuidar da saúde e estética dos seus cabelos com os melhores produtos do mercado.
                     </p>
 
-                    <!-- Grid de Serviços -->
+                    <!-- Grid de Serviços (Com efeito cascata - Delay progressivo) -->
                     <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8 text-left">
-                        <!-- Serviço 1 -->
-                        <div class="relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
+                        <!-- Serviço 1 (Sobe Primeiro) -->
+                        <div
+                            class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-100 ease-out relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
                             <img
                                 src="https://images.unsplash.com/photo-1700760934268-8aa0ef52ce0a?q=80&w=764&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
                                 alt="Corte Feminino"
@@ -351,8 +377,9 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- Serviço 2 -->
-                        <div class="relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
+                        <!-- Serviço 2 (Sobe depois) -->
+                        <div
+                            class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-200 ease-out relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
                             <img
                                 src="https://images.unsplash.com/photo-1554519934-e32b1629d9ee?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
                                 alt="Coloração e Mechas"
@@ -375,7 +402,8 @@ onUnmounted(() => {
                         </div>
 
                         <!-- Serviço 3 -->
-                        <div class="relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
+                        <div
+                            class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-300 ease-out relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
                             <img
                                 src="https://images.unsplash.com/photo-1634449571010-02389ed0f9b0?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
                                 alt="Tratamentos Capilares"
@@ -398,7 +426,8 @@ onUnmounted(() => {
                         </div>
 
                         <!-- Serviço 4 -->
-                        <div class="relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
+                        <div
+                            class="reveal opacity-0 translate-y-12 transition-all duration-1000 delay-500 ease-out relative h-[450px] rounded-[2rem] overflow-hidden group shadow-lg">
                             <img
                                 src="https://images.unsplash.com/photo-1611826585949-b0ccabd2c1a4?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
                                 alt="Penteados e Maquiagem"
@@ -423,9 +452,8 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <!-- Footer -->
-            <footer id="contato" class="bg-[#668266] text-white pt-24 pb-12 relative overflow-hidden">
-                <!-- Efeito Decorativo de Fundo no Footer -->
+            <!-- Footer (Reveal) -->
+            <footer id="contato" class="reveal opacity-0 translate-y-12 transition-all duration-1000 ease-out bg-[#668266] text-white pt-24 pb-12 relative overflow-hidden">
                 <div class="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-[#547558] opacity-30 blur-3xl pointer-events-none"></div>
                 <div class="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-[#547558] opacity-30 blur-3xl pointer-events-none"></div>
 
@@ -601,11 +629,8 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- Bottom Bar -->
                     <div class="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/20 text-sm text-white/60">
                         <p>&copy; 2026. Todos os direitos reservados Cabeleila.</p>
-
-                        <!-- Back to Top -->
                         <button
                             class="mt-4 md:mt-0 flex items-center gap-2 text-white/60 hover:text-white transition-colors group"
                             onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">
