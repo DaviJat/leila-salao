@@ -3,6 +3,7 @@
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\AppointmentController as AdminAppointmentController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -13,8 +14,20 @@ Route::get('/', function () {
 
 // Rotas de Dashboard (Protegidas por autenticação e verificação de email)
 Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
+    return Inertia::render('Admin/Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+// Rotas do Painel Administrativo (Protegidas por autenticação)
+Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/agendamentos', [AdminAppointmentController::class, 'index'])->name('appointments.index');
+    Route::post('/agendamentos', [AdminAppointmentController::class, 'store'])->name('appointments.store');
+    Route::put('/agendamentos/{id}', [AdminAppointmentController::class, 'update'])->name('appointments.update');
+    Route::patch('/agendamentos/{id}/status', [AdminAppointmentController::class, 'updateStatus'])->name('appointments.status');
+
+    // Clientes
+    Route::get('/clientes', [\App\Http\Controllers\Admin\ClientController::class, 'index'])->name('clients.index');
+    Route::patch('/clientes/{id}', [\App\Http\Controllers\Admin\ClientController::class, 'update'])->name('clients.update');
+});
 
 // Rotas de Perfil (Protegidas por autenticação)
 Route::middleware('auth')->group(function () {

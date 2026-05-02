@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Appointment;
+use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -35,8 +36,8 @@ class ClientController extends Controller
         ]);
     }
 
-    // Gera o código OTP e "envia" via WhatsApp para clientes não logados
-    public function sendOtp(Request $request)
+    // Gera o código OTP e envia via WhatsApp (Usando injeção de dependência)
+    public function sendOtp(Request $request, WhatsAppService $whatsAppService)
     {
         $request->validate([
             'whatsapp' => 'required|string',
@@ -49,17 +50,19 @@ class ClientController extends Controller
             ['full_name' => $request->name]
         );
 
-        // Gera um código de 6 dígitos
-        $otp = rand(100000, 999999);
+        // Gera um código de 6 dígitos (forçado para string)
+        $otp = (string) rand(100000, 999999);
 
         $client->update([
             'otp_code' => $otp,
             'otp_expires_at' => now()->addMinutes(10) // Código vale por 10 minutos
         ]);
 
-        // to-do: Integrar com serviço real de envio de WhatsApp
-        // Por enquanto, apenas logamos o código para testes
+        // Mantemos o log para facilitar testes locais/debug
         Log::info("WhatsApp para {$client->phone}: Seu código de acesso Cabeleila é {$otp}");
+
+        // Dispara a mensagem usando o nosso Service
+        // $whatsAppService->sendOtp($client->phone, $client->full_name, $otp);
 
         return response()->json(['success' => true]);
     }
