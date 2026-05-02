@@ -3,17 +3,6 @@ import { Head, Link } from '@inertiajs/vue3';
 import { onMounted } from 'vue';
 import SiteLayout from '@/Layouts/SiteLayout.vue'; // <--- Importamos o layout aqui!
 
-defineProps({
-    canLogin: {
-        type: Boolean,
-        default: true,
-    },
-    canRegister: {
-        type: Boolean,
-        default: true,
-    },
-});
-
 // A lógica do Navbar foi para o Layout. Mantemos apenas o Scroll Reveal aqui.
 onMounted(() => {
     const observer = new IntersectionObserver(

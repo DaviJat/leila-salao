@@ -9,11 +9,15 @@ const props = defineProps({
     availableSlots: Object,
     loggedClient: Object,
     flash: Object,
+    editingAppointment: Object, // Nova prop para receber o agendamento em edição
 });
 
 // Dados do usuário logado (se houver)
 const page = usePage();
 const currentUser = computed(() => props.loggedClient);
+
+// Modo Edição
+const isEditing = computed(() => !!props.editingAppointment);
 
 // Lógica do calendário
 const currentDate = ref(new Date());
@@ -37,7 +41,7 @@ const nextMonth = () => {
     }
 };
 
-// Lógica para voltar ao mês anterior, sem permitir voltar para meses anteriores ao mês atual real
+// Lógica para voltar ao mês anterior
 const prevMonth = () => {
     const realDate = new Date();
     if (currentYear.value === realDate.getFullYear() && currentMonth.value === realDate.getMonth()) {
@@ -121,7 +125,7 @@ const form = useForm({
     otp: '',
 });
 
-// Máscara simples para o campo de telefone (apenas números, parênteses e hífen)
+// Máscara simples para o campo de telefone
 const applyPhoneMask = (event) => {
     let value = event.target.value.replace(/\D/g, '');
     if (value.length > 11) value = value.slice(0, 11);
@@ -138,7 +142,6 @@ const applyPhoneMask = (event) => {
 
 const totalPrice = computed(() => {
     const total = form.services.reduce((acc, service) => {
-        // Converte o preço (ex: "80.00") para número e soma
         return acc + Number(service.price);
     }, 0);
     return `R$ ${total.toFixed(2).replace('.', ',')}`;
@@ -147,6 +150,7 @@ const totalPrice = computed(() => {
 onMounted(() => {
     setTimeout(() => (isLoaded.value = true), 50);
 
+    // Preenchimento de dados do cliente logado
     if (currentUser.value && currentUser.value.phone) {
         form.name = currentUser.value.full_name;
 
@@ -157,9 +161,14 @@ onMounted(() => {
             form.whatsapp = savedPhone;
         }
     }
+
+    // Se estiver em modo de edição, pré-seleciona os serviços do agendamento
+    if (props.editingAppointment) {
+        form.services = [...props.editingAppointment.services];
+    }
 });
 
-// Nvegação entre os passos do formulário
+// Navegação entre os passos do formulário
 const nextStep = () => {
     if (step.value === 1 && form.services.length === 0) return alert('Selecione pelo menos um serviço.');
     if (step.value === 2 && (!form.date || !form.time)) return alert('Selecione uma data e um horário.');
@@ -169,6 +178,10 @@ const nextStep = () => {
 const prevStep = () => {
     step.value--;
     window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+const goBack = () => {
+    window.history.back();
 };
 
 // Seleção de serviços
@@ -187,7 +200,6 @@ const handleFinalizeClick = async () => {
         return;
     }
 
-    // Limpa a máscara antes de enviar para o banco (para salvar apenas os números)
     const cleanWhatsapp = form.whatsapp.replace(/\D/g, '');
     if (cleanWhatsapp.length < 10) {
         otpError.value = 'Por favor, insira um número de telefone válido com DDD.';
@@ -199,7 +211,7 @@ const handleFinalizeClick = async () => {
 
     try {
         await axios.post(route('appointments.sendOtp'), {
-            whatsapp: cleanWhatsapp, // Envia limpo
+            whatsapp: cleanWhatsapp,
             name: form.name,
         });
         isOtpModalOpen.value = true;
@@ -211,13 +223,17 @@ const handleFinalizeClick = async () => {
 };
 
 const submitAppointment = () => {
+    // Define o método HTTP e a Rota com base no modo (Criação vs Edição)
+    const method = isEditing.value ? 'put' : 'post';
+    const url = isEditing.value ? route('appointments.update', props.editingAppointment.id) : route('appointments.store');
+
     form.transform((data) => ({
         ...data,
         whatsapp: data.whatsapp.replace(/\D/g, ''),
-    })).post(route('appointments.store'), {
+    }))[method](url, {
         onSuccess: (page) => {
             isOtpModalOpen.value = false;
-            // Se o controller enviou a mensagem de sucesso, ativamos a tela verde!
+            // A mensagem de sucesso do Controller de Edição/Criação ativará o Modal Verde
             if (page.props.flash?.success) {
                 showSuccessModal.value = true;
             }
@@ -233,7 +249,7 @@ const showSuccessModal = ref(false);
 </script>
 
 <template>
-    <Head title="Agendar Horário - Cabeleila" />
+    <Head :title="isEditing ? 'Editar Agendamento - Cabeleila' : 'Agendar Horário - Cabeleila'" />
 
     <SiteLayout>
         <div class="min-h-screen pt-28 pb-12 px-4 sm:px-6 bg-[url('/images/background-painel.png')] bg-cover bg-center bg-fixed relative w-full overflow-x-hidden">
@@ -241,8 +257,12 @@ const showSuccessModal = ref(false);
 
             <div class="max-w-4xl mx-auto transition-all duration-1000 ease-out relative z-10 w-full" :class="isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'">
                 <div class="text-center mb-8">
-                    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Agende a sua Experiência</h1>
-                    <p class="text-sm text-gray-700 max-w-md mx-auto">Siga os passos abaixo para reservar o seu momento de cuidado e beleza.</p>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+                        {{ isEditing ? 'Reagendar sua Experiência' : 'Agende a sua Experiência' }}
+                    </h1>
+                    <p class="text-sm text-gray-700 max-w-md mx-auto">
+                        {{ isEditing ? 'Ajuste os serviços e escolha um novo horário na nossa agenda.' : 'Siga os passos abaixo para reservar o seu momento de cuidado e beleza.' }}
+                    </p>
                 </div>
 
                 <div class="flex items-start justify-center max-w-2xl mx-auto mb-10 px-2">
@@ -323,9 +343,19 @@ const showSuccessModal = ref(false);
                         </button>
                     </div>
 
-                    <div class="mt-8 flex justify-center w-full">
+                    <div class="mt-8 flex flex-col-reverse sm:flex-row justify-between items-center gap-4 px-2 w-full">
+                        <button
+                            @click="goBack"
+                            type="button"
+                            class="w-full sm:w-auto text-gray-600 text-sm sm:text-base font-bold hover:text-gray-900 transition-colors flex justify-center items-center gap-1 py-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path d="M10 19l-7-7m0 0l7-7m-7 7h18" stroke-width="2" />
+                            </svg>
+                            Voltar
+                        </button>
                         <button
                             @click="nextStep"
+                            type="button"
                             :disabled="form.services.length === 0"
                             class="w-full sm:w-auto bg-[#547558] text-white px-8 sm:px-12 py-3.5 sm:py-4 rounded-full font-bold text-sm sm:text-base shadow-lg hover:bg-[#435e46] transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
                             Prosseguir
@@ -426,10 +456,10 @@ const showSuccessModal = ref(false);
                         </div>
                     </div>
 
-                    <div class="mt-8 flex flex-col-reverse sm:flex-row justify-between items-center gap-4 px-2">
+                    <div class="mt-8 flex flex-col-reverse sm:flex-row justify-end items-center gap-4 px-2">
                         <button
                             @click="prevStep"
-                            class="w-full sm:w-auto text-gray-600 text-sm sm:text-base font-bold hover:text-gray-900 transition-colors flex justify-center items-center gap-1 py-2">
+                            class="w-full sm:w-auto text-gray-600 text-sm sm:text-base font-bold hover:text-gray-900 transition-colors flex justify-center items-center gap-1 py-2 sm:mr-4">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18" stroke-width="2" /></svg> Voltar
                         </button>
                         <button
@@ -461,7 +491,6 @@ const showSuccessModal = ref(false);
                                         Clique aqui para sair
                                     </Link>
                                 </div>
-
                                 <div>
                                     <label class="block text-sm sm:text-base font-bold text-gray-800 mb-2">Nome Completo</label>
                                     <input
@@ -487,16 +516,21 @@ const showSuccessModal = ref(false);
 
                                 <p v-if="otpError && !isOtpModalOpen" class="text-red-500 text-sm font-medium">{{ otpError }}</p>
 
-                                <div class="flex justify-between items-center">
-                                    <button @click="prevStep" class="text-gray-600 text-sm sm:text-base font-bold hover:text-gray-900 transition-colors flex items-center gap-1">
+                                <div class="flex flex-col-reverse sm:flex-row justify-end items-center gap-4 mt-6">
+                                    <button
+                                        @click="prevStep"
+                                        type="button"
+                                        class="w-full sm:w-auto text-gray-600 text-sm sm:text-base font-bold hover:text-gray-900 transition-colors flex items-center justify-center gap-1 py-2 sm:mr-4">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18" stroke-width="2" /></svg>
                                         Voltar
                                     </button>
                                     <button
                                         type="submit"
                                         :disabled="isSendingOtp || form.processing"
-                                        class="bg-[#547558] text-white px-4 sm:px-6 py-3 rounded-full text-sm sm:text-base font-bold shadow-md hover:bg-[#435e46] transition-all transform hover:-translate-y-0.5 disabled:opacity-50 flex items-center gap-2">
-                                        {{ isSendingOtp ? 'Processando...' : currentUser ? 'Finalizar Agendamento' : 'Confirmar Agendamento' }}
+                                        class="w-full sm:w-auto bg-[#547558] text-white px-8 sm:px-10 py-3.5 rounded-full text-sm sm:text-base font-bold shadow-md hover:bg-[#435e46] transition-all transform hover:-translate-y-0.5 disabled:opacity-50 flex items-center justify-center gap-2">
+                                        {{
+                                            isSendingOtp ? 'Processando...' : currentUser ? (isEditing ? 'Confirmar Alteração' : 'Finalizar Agendamento') : 'Confirmar Agendamento'
+                                        }}
                                     </button>
                                 </div>
                             </form>
@@ -574,7 +608,7 @@ const showSuccessModal = ref(false);
                     </svg>
                 </div>
 
-                <h3 class="text-2xl font-bold text-gray-900 mb-2">Confirme seu número</h3>
+                <h3 class="text-2xl font-bold text-gray-900 mb-2">Confirme sua identidade</h3>
                 <p class="text-sm text-gray-600 mb-6">
                     Enviamos um código de 6 dígitos para o WhatsApp <strong>{{ form.whatsapp }}</strong
                     >.
@@ -602,6 +636,7 @@ const showSuccessModal = ref(false);
                 </div>
             </div>
         </div>
+
         <div v-if="showSuccessModal" class="fixed inset-0 z-[200] flex items-center justify-center p-4">
             <div class="absolute inset-0 bg-[#547558] bg-opacity-95 backdrop-blur-md"></div>
 
@@ -613,14 +648,14 @@ const showSuccessModal = ref(false);
                     </svg>
                 </div>
 
-                <h2 class="text-3xl sm:text-4xl font-black text-gray-900 mb-4">Tudo Certo, {{ form.name.split(' ')[0] }}!</h2>
-                <p class="text-gray-600 mb-2 text-lg">O seu momento está reservado.</p>
+                <h2 class="text-3xl sm:text-4xl font-black text-gray-900 mb-4">{{ isEditing ? 'Alteração Confirmada!' : `Tudo Certo, ${form.name.split(' ')[0]}!` }}</h2>
+                <p class="text-gray-600 mb-2 text-lg">{{ isEditing ? 'Seu agendamento foi atualizado com sucesso.' : 'O seu momento está reservado.' }}</p>
                 <p class="text-gray-500 mb-10 text-sm">Enviamos os detalhes para o seu WhatsApp.</p>
 
                 <Link
-                    href="/"
+                    href="/meus-agendamentos"
                     class="bg-[#547558] text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:bg-[#435e46] transition-all block w-full hover:-translate-y-1">
-                    Voltar para o Início
+                    Ver Meus Agendamentos
                 </Link>
             </div>
         </div>

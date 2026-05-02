@@ -7,12 +7,8 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // Rota para a página inicial (Home)
-
 Route::get('/', function () {
-    return Inertia::render('Home', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-    ]);
+    return Inertia::render('Home');
 })->name('home');
 
 // Rotas de Dashboard (Protegidas por autenticação e verificação de email)
@@ -28,18 +24,14 @@ Route::middleware('auth')->group(function () {
 });
 
 // Rotas de Agendamento (Públicas)
-
-// Rota para a página de agendamento (formulário)
-Route::get('/agendar', function () {
-    return Inertia::render('Appointment/Schedule');
-})->name('agendar');
-
-// Rotas de Agendamento
 Route::get('/agendar', [AppointmentController::class, 'create'])->name('agendar');
-Route::post('/agendamentos', [AppointmentController::class, 'store'])->name('appointments.store');
+Route::post('/agendar', [AppointmentController::class, 'store'])->name('appointments.store');
+Route::put('/agendar/{id}', [AppointmentController::class, 'update'])->name('appointments.update');
 
 // Rotas do Cliente
-Route::post('/agendamentos/enviar-otp', [ClientController::class, 'sendOtp'])->name('appointments.sendOtp');
-Route::post('/logout-cliente', [ClientController::class, 'logout'])->name('clients.logout');
+Route::get('/meus-agendamentos', [ClientController::class, 'myAppointments'])->name('clients.appointments');
+Route::post('/cliente/login-otp', [ClientController::class, 'loginViaOtp'])->name('clients.loginOtp');
+Route::post('/cliente/enviar-otp', [ClientController::class, 'sendOtp'])->name('appointments.sendOtp');
+Route::post('/cliente/logout', [ClientController::class, 'logout'])->name('clients.logout');
 
 require __DIR__ . '/auth.php';

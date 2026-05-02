@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Tighten\Ziggy\Ziggy;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -29,11 +30,25 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        return [
-            ...parent::share($request),
+        // Puxa o número do .env (com um fallback de segurança)
+        $whatsappNumber = env('WHATSAPP_ADMIN_NUMBER', '(75) 90000-0000');
+        // Limpa tudo que não for número (para usar nos links)
+        $whatsappClean = preg_replace('/\D/', '', $whatsappNumber);
+
+        return array_merge(parent::share($request), [
             'auth' => [
                 'user' => $request->user(),
             ],
-        ];
+            // Nossas variáveis globais ficam disponíveis em todo o frontend!
+            'contact' => [
+                'whatsapp' => $whatsappNumber,
+                'whatsappLink' => '55' . $whatsappClean, // Adiciona o 55 do Brasil
+            ],
+            'ziggy' => function () use ($request) {
+                return array_merge((new Ziggy)->toArray(), [
+                    'location' => $request->url(),
+                ]);
+            },
+        ]);
     }
 }

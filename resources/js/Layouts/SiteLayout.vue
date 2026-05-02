@@ -47,22 +47,28 @@ onUnmounted(() => {
                 <div class="hidden lg:flex flex-1 items-center justify-end gap-5">
                     <div class="text-right flex flex-col justify-center transition-opacity duration-300">
                         <span class="text-sm text-[#547558] leading-none mb-1">Ligue agora:</span>
-                        <span class="text-md font-semibold text-gray-900 leading-none hover:text-[#547558] transition-colors duration-300">(11) 99999-0000</span>
+                        <span class="text-md font-semibold text-gray-900 leading-none hover:text-[#547558] transition-colors duration-300">
+                            {{ $page.props.contact.whatsapp }}
+                        </span>
                     </div>
 
                     <Link
-                        :href="isAgendarPage ? '/' : route('agendar')"
+                        :href="isAgendarPage ? '/meus-agendamentos' : route('agendar')"
                         class="rounded-full border border-gray-300 px-5 py-2 text-md font-medium text-gray-700 hover:border-[#547558] hover:text-[#547558] hover:bg-[#547558]/5 transition-all duration-300 flex items-center gap-1.5 group">
                         <svg
                             v-if="isAgendarPage"
-                            class="w-3.5 h-3.5 text-gray-400 group-hover:text-[#547558] transition-colors duration-300 transform group-hover:-translate-x-0.5"
+                            class="w-4 h-4 text-gray-400 group-hover:text-[#547558] transition-colors duration-300"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="1.5"
+                                d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                         </svg>
 
-                        <span>{{ isAgendarPage ? 'Voltar ao Início' : 'Agendar' }}</span>
+                        <span>{{ isAgendarPage ? 'Meus Agendamentos' : 'Agendar' }}</span>
 
                         <svg
                             v-if="!isAgendarPage"
@@ -134,17 +140,24 @@ onUnmounted(() => {
                         <div class="pt-4 flex flex-col gap-4">
                             <div class="flex flex-col">
                                 <span class="text-sm text-[#547558] leading-none mb-1">Ligue agora:</span>
-                                <span class="text-lg font-semibold text-gray-900 leading-none">(11) 99999-0000</span>
+                                <span class="text-lg font-semibold text-gray-900 leading-none">
+                                    {{ $page.props.contact.phone }}
+                                </span>
                             </div>
 
                             <Link
-                                :href="isAgendarPage ? '/' : route('agendar')"
+                                :href="isAgendarPage ? '/meus-agendamentos' : route('agendar')"
                                 @click="isMobileMenuOpen = false"
                                 class="rounded-full bg-[#547558] text-white px-5 py-3 flex items-center justify-center gap-2 text-base font-medium hover:bg-[#435e46] transition-all duration-300 w-full shadow-sm hover:shadow-md transform hover:-translate-y-0.5">
                                 <svg v-if="isAgendarPage" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="1.5"
+                                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                                 </svg>
-                                <span>{{ isAgendarPage ? 'Voltar ao Início' : 'Agendar Horário' }}</span>
+
+                                <span>{{ isAgendarPage ? 'Meus Agendamentos' : 'Agendar Horário' }}</span>
                             </Link>
                         </div>
                     </div>
@@ -285,7 +298,12 @@ onUnmounted(() => {
                                 </div>
                                 <div>
                                     <p class="text-sm text-white/60 mb-1">WhatsApp</p>
-                                    <a href="tel:+5511999990000" class="text-white font-medium hover:text-gray-200 transition-colors">(11) 99999-0000</a>
+                                    <a
+                                        :href="'https://wa.me/' + $page.props.contact.whatsappLink"
+                                        target="_blank"
+                                        class="text-white font-medium hover:text-gray-200 transition-colors">
+                                        {{ $page.props.contact.whatsapp }}
+                                    </a>
                                 </div>
                             </li>
                             <li class="flex items-start gap-4">
