@@ -9,29 +9,28 @@ const props = defineProps({
     availableSlots: Object,
     loggedClient: Object,
     flash: Object,
-    editingAppointment: Object, // Nova prop para receber o agendamento em edição
+    editingAppointment: Object,
+    clientUpcomingAppointments: Array, // Prop que recebe os agendamentos futuros
 });
 
-// Dados do usuário logado (se houver)
-const page = usePage();
+// Dados do usuário logado
 const currentUser = computed(() => props.loggedClient);
 
 // Modo Edição
-const isEditing = computed(() => !!props.editingAppointment);
+const editingId = ref(props.editingAppointment ? props.editingAppointment.id : null);
+const isEditing = computed(() => !!editingId.value);
 
 // Lógica do calendário
 const currentDate = ref(new Date());
 const currentMonth = ref(currentDate.value.getMonth());
 const currentYear = ref(currentDate.value.getFullYear());
 
-// Formatação do nome do mês e ano para exibição
 const monthNameAndYear = computed(() => {
     const date = new Date(currentYear.value, currentMonth.value);
     const month = date.toLocaleString('pt-BR', { month: 'long' });
     return `${month.charAt(0).toUpperCase() + month.slice(1)} ${currentYear.value}`;
 });
 
-// Lógica para avançar para o próximo mês
 const nextMonth = () => {
     if (currentMonth.value === 11) {
         currentMonth.value = 0;
@@ -41,7 +40,6 @@ const nextMonth = () => {
     }
 };
 
-// Lógica para voltar ao mês anterior
 const prevMonth = () => {
     const realDate = new Date();
     if (currentYear.value === realDate.getFullYear() && currentMonth.value === realDate.getMonth()) {
@@ -56,22 +54,19 @@ const prevMonth = () => {
     }
 };
 
-// Gera os dias para preencher a grade (Grid) do calendário
 const calendarDays = computed(() => {
     const year = currentYear.value;
     const month = currentMonth.value;
 
-    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 (Dom) a 6 (Sáb)
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     const days = [];
 
-    // Espaços vazios no início do mês
     for (let i = 0; i < firstDayOfMonth; i++) {
         days.push({ empty: true });
     }
 
-    // Dias do mês
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -95,17 +90,15 @@ const calendarDays = computed(() => {
     return days;
 });
 
-// Filtra os horários disponíveis para a data selecionada
 const availableTimesForSelectedDate = computed(() => {
     if (!form.date) return [];
     return props.availableSlots[form.date] || [];
 });
 
-// Seleciona uma data do calendário
 const selectDate = (day) => {
     if (!day.isSelectable) return;
     form.date = day.date;
-    form.time = ''; // Reseta o horário ao trocar de dia
+    form.time = '';
 };
 
 // Estados e lógica do formulário
@@ -125,7 +118,7 @@ const form = useForm({
     otp: '',
 });
 
-// Máscara simples para o campo de telefone
+// Máscaras e Utilitários
 const applyPhoneMask = (event) => {
     let value = event.target.value.replace(/\D/g, '');
     if (value.length > 11) value = value.slice(0, 11);
@@ -141,16 +134,13 @@ const applyPhoneMask = (event) => {
 };
 
 const totalPrice = computed(() => {
-    const total = form.services.reduce((acc, service) => {
-        return acc + Number(service.price);
-    }, 0);
+    const total = form.services.reduce((acc, service) => acc + Number(service.price), 0);
     return `R$ ${total.toFixed(2).replace('.', ',')}`;
 });
 
 onMounted(() => {
     setTimeout(() => (isLoaded.value = true), 50);
 
-    // Preenchimento de dados do cliente logado
     if (currentUser.value && currentUser.value.phone) {
         form.name = currentUser.value.full_name;
 
@@ -162,19 +152,107 @@ onMounted(() => {
         }
     }
 
-    // Se estiver em modo de edição, pré-seleciona os serviços do agendamento
     if (props.editingAppointment) {
         form.services = [...props.editingAppointment.services];
     }
 });
 
-// Navegação entre os passos do formulário
-const nextStep = () => {
-    if (step.value === 1 && form.services.length === 0) return alert('Selecione pelo menos um serviço.');
-    if (step.value === 2 && (!form.date || !form.time)) return alert('Selecione uma data e um horário.');
+// Verifica agendamento na mesma semana (domingo a sábado) para detectar conflitos e mostrar o modal de aviso
+const isSameWeek = (dateStr1, dateStr2) => {
+    // Limpa as strings para garantir que temos apenas YYYY-MM-DD
+    const cleanDate1 = String(dateStr1).substring(0, 10);
+    const cleanDate2 = String(dateStr2).substring(0, 10);
+
+    const d1 = new Date(cleanDate1 + 'T00:00:00');
+    const d2 = new Date(cleanDate2 + 'T00:00:00');
+
+    const startOfWeek = new Date(d1);
+    startOfWeek.setDate(d1.getDate() - d1.getDay());
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+    return d2 >= startOfWeek && d2 <= endOfWeek;
+};
+
+const warningModal = ref({
+    isOpen: false,
+    type: '', // 'duplicate' ou 'merge'
+    appointment: null,
+    duplicateNames: '',
+});
+
+const proceedToStep3 = () => {
+    warningModal.value.isOpen = false;
     step.value++;
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
+
+const handleMerge = () => {
+    const existingApp = warningModal.value.appointment;
+
+    // Junta os serviços novos com os que já estavam agendados (evitando duplicatas)
+    const mergedServices = [...existingApp.services];
+    const existingIds = mergedServices.map((s) => s.id);
+
+    form.services.forEach((s) => {
+        if (!existingIds.includes(s.id)) {
+            mergedServices.push(s);
+        }
+    });
+
+    // Atualiza o formulário para a data/hora do agendamento que JÁ EXISTE
+    form.services = mergedServices;
+    form.date = String(existingApp.availability.date).substring(0, 10);
+    form.time = String(existingApp.availability.hour).substring(0, 5);
+
+    // Transforma esse fluxo atual em uma EDIÇÃO do agendamento antigo
+    editingId.value = existingApp.id;
+
+    // Fecha o modal e pula para a tela final de resumo
+    warningModal.value.isOpen = false;
+    step.value = 3;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+// Navegação interceptada
+const nextStep = () => {
+    if (step.value === 1 && form.services.length === 0) return alert('Selecione pelo menos um serviço.');
+
+    if (step.value === 2) {
+        if (!form.date || !form.time) return alert('Selecione uma data e um horário.');
+
+        // Verifica conflitos apenas se não estiver editando e estiver logada
+        if (currentUser.value && !isEditing.value && props.clientUpcomingAppointments) {
+            const conflict = props.clientUpcomingAppointments.find((app) => isSameWeek(app.availability.date, form.date));
+
+            if (conflict) {
+                const existingServiceIds = conflict.services.map((s) => s.id);
+                const overlappingServices = form.services.filter((s) => existingServiceIds.includes(s.id));
+
+                if (overlappingServices.length > 0) {
+                    warningModal.value = {
+                        isOpen: true,
+                        type: 'duplicate',
+                        appointment: conflict,
+                        duplicateNames: overlappingServices.map((s) => s.name).join(', '),
+                    };
+                } else {
+                    warningModal.value = {
+                        isOpen: true,
+                        type: 'merge',
+                        appointment: conflict,
+                        duplicateNames: '',
+                    };
+                }
+                return; // Pausa para mostrar o modal
+            }
+        }
+    }
+
+    proceedToStep3();
+};
+
 const prevStep = () => {
     step.value--;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -184,7 +262,7 @@ const goBack = () => {
     window.history.back();
 };
 
-// Seleção de serviços
+// Serviços e Finalização
 const toggleService = (service) => {
     const index = form.services.findIndex((s) => s.id === service.id);
     if (index === -1) form.services.push(service);
@@ -223,9 +301,8 @@ const handleFinalizeClick = async () => {
 };
 
 const submitAppointment = () => {
-    // Define o método HTTP e a Rota com base no modo (Criação vs Edição)
     const method = isEditing.value ? 'put' : 'post';
-    const url = isEditing.value ? route('appointments.update', props.editingAppointment.id) : route('appointments.store');
+    const url = isEditing.value ? route('appointments.update', editingId.value) : route('appointments.store');
 
     form.transform((data) => ({
         ...data,
@@ -233,7 +310,6 @@ const submitAppointment = () => {
     }))[method](url, {
         onSuccess: (page) => {
             isOtpModalOpen.value = false;
-            // A mensagem de sucesso do Controller de Edição/Criação ativará o Modal Verde
             if (page.props.flash?.success) {
                 showSuccessModal.value = true;
             }
@@ -244,7 +320,6 @@ const submitAppointment = () => {
     });
 };
 
-// Modal de sucesso
 const showSuccessModal = ref(false);
 </script>
 
@@ -348,9 +423,7 @@ const showSuccessModal = ref(false);
                             @click="goBack"
                             type="button"
                             class="w-full sm:w-auto text-gray-600 text-sm sm:text-base font-bold hover:text-gray-900 transition-colors flex justify-center items-center gap-1 py-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path d="M10 19l-7-7m0 0l7-7m-7 7h18" stroke-width="2" />
-                            </svg>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18" stroke-width="2" /></svg>
                             Voltar
                         </button>
                         <button
@@ -411,7 +484,6 @@ const showSuccessModal = ref(false);
                                                   : 'text-gray-300 cursor-not-allowed bg-transparent',
                                         ]">
                                         {{ day.dayNumber }}
-
                                         <span v-if="day.isSelectable && form.date !== day.date" class="absolute bottom-1 w-1 h-1 bg-[#547558] rounded-full opacity-50"></span>
                                     </button>
                                 </template>
@@ -483,14 +555,8 @@ const showSuccessModal = ref(false);
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                     </svg>
                                     <span class="font-medium text-sm leading-tight">Bem-vinda de volta, {{ form.name.split(' ')[0] }}! Seus dados já estão preenchidos.</span>
-                                    <Link
-                                        :href="route('clients.logout')"
-                                        method="post"
-                                        as="button"
-                                        class="text-xs font-bold uppercase tracking-wider underline hover:text-[#435e46] transition-colors">
-                                        Clique aqui para sair
-                                    </Link>
                                 </div>
+
                                 <div>
                                     <label class="block text-sm sm:text-base font-bold text-gray-800 mb-2">Nome Completo</label>
                                     <input
@@ -594,6 +660,67 @@ const showSuccessModal = ref(false);
             </div>
         </div>
 
+        <div v-if="warningModal.isOpen" class="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="warningModal.isOpen = false"></div>
+
+            <div class="bg-white w-full max-w-md rounded-[2rem] shadow-2xl relative z-10 p-8 text-center animate-fade-in-up">
+                <div
+                    class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
+                    :class="warningModal.type === 'duplicate' ? 'bg-orange-50 text-orange-500' : 'bg-[#547558]/10 text-[#547558]'">
+                    <svg v-if="warningModal.type === 'duplicate'" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <svg v-else class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+
+                <h3 class="text-2xl font-bold text-gray-900 mb-2">
+                    {{ warningModal.type === 'duplicate' ? 'Tem certeza?' : 'Dica para você!' }}
+                </h3>
+
+                <p v-if="warningModal.type === 'duplicate'" class="text-sm text-gray-600 mb-6">
+                    Notamos que você já agendou <strong>{{ warningModal.duplicateNames }}</strong> nesta mesma semana, no dia
+                    <strong>{{ String(warningModal.appointment.availability.date).substring(0, 10).split('-').reverse().join('/') }}</strong
+                    >. Deseja realizar o mesmo procedimento novamente?
+                </p>
+                <p v-else class="text-sm text-gray-600 mb-6">
+                    Você já possui uma visita marcada nesta semana para o dia
+                    <strong>{{ String(warningModal.appointment.availability.date).substring(0, 10).split('-').reverse().join('/') }}</strong
+                    >. Deseja aproveitar a viagem e realizar tudo no mesmo dia?
+                </p>
+
+                <div class="space-y-3 mt-6">
+                    <button
+                        v-if="warningModal.type === 'merge'"
+                        @click="handleMerge"
+                        class="w-full bg-[#547558] text-white py-3.5 rounded-full font-bold shadow-md hover:bg-[#435e46] transition-all flex items-center justify-center">
+                        Sim, juntar serviços
+                    </button>
+                    <button
+                        v-if="warningModal.type === 'duplicate'"
+                        @click="proceedToStep3"
+                        class="w-full bg-orange-500 text-white py-3.5 rounded-full font-bold shadow-md hover:bg-orange-600 transition-all">
+                        Sim, agendar novamente
+                    </button>
+
+                    <button v-if="warningModal.type === 'merge'" @click="proceedToStep3" class="w-full text-gray-500 text-sm font-bold py-2 hover:text-gray-900 transition-colors">
+                        Não, manter em dias separados
+                    </button>
+                    <button
+                        v-if="warningModal.type === 'duplicate'"
+                        @click="warningModal.isOpen = false"
+                        class="w-full text-gray-500 text-sm font-bold py-2 hover:text-gray-900 transition-colors">
+                        Cancelar e rever serviços
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div v-if="isOtpModalOpen" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="isOtpModalOpen = false"></div>
 
@@ -621,9 +748,7 @@ const showSuccessModal = ref(false);
                     placeholder="000000"
                     class="w-full text-center text-3xl font-bold tracking-[0.5em] rounded-xl border-gray-300 focus:border-[#547558] focus:ring focus:ring-[#547558]/20 py-4 mb-2 transition-all" />
 
-                <p v-if="otpError || form.errors.otp" class="text-red-500 text-sm font-medium mb-6">
-                    {{ otpError || form.errors.otp }}
-                </p>
+                <p v-if="otpError || form.errors.otp" class="text-red-500 text-sm font-medium mb-6">{{ otpError || form.errors.otp }}</p>
 
                 <div class="space-y-3 mt-6">
                     <button
@@ -680,7 +805,6 @@ const showSuccessModal = ref(false);
     background-color: #e5e7eb;
     border-radius: 20px;
 }
-
 .animate-fade-in {
     animation: fadeIn 0.4s ease-out;
 }

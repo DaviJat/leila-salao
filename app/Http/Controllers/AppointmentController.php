@@ -40,35 +40,44 @@ class AppointmentController extends Controller
 
         $loggedClient = Auth::guard('clients')->user();
         $editingAppointment = null;
+        $clientUpcomingAppointments = [];
 
-        // Se tiver um edit_id na query e o cliente estiver logado, busca o agendamento para edição
-        if ($request->has('edit_id') && $loggedClient) {
-            $editingAppointment = Appointment::with(['services', 'availability'])
+        if ($loggedClient) {
+            // Se tiver um edit_id na query e o cliente estiver logado, busca o agendamento para edição
+            if ($request->has('edit_id')) {
+                $editingAppointment = Appointment::with(['services', 'availability'])
+                    ->where('client_id', $loggedClient->id)
+                    ->findOrFail($request->edit_id);
+
+                // Normaliza para evitar dupla especificação de hora
+                $availability = $editingAppointment->availability;
+
+                $datePart = $availability->date;
+                if (is_object($datePart) && method_exists($datePart, 'format')) {
+                    $dateString = $datePart->format('Y-m-d');
+                } else {
+                    $dateString = substr((string) $datePart, 0, 10);
+                }
+
+                $hourPart = (string) $availability->hour;
+                $hourString = substr($hourPart, 0, 8);
+
+                $agendamentoDate = Carbon::parse($dateString . ' ' . $hourString);
+
+                // Calcula a diferença em horas. Se for menor que 48h, bloqueia a edição.
+                if (now()->diffInHours($agendamentoDate, false) < 48) {
+                    return redirect()->route('clients.appointments');
+                }
+            }
+
+            // Busca os agendamentos futuros para a inteligência de calendário (evitar duplicações na mesma semana)
+            $clientUpcomingAppointments = Appointment::with(['services', 'availability'])
                 ->where('client_id', $loggedClient->id)
-                ->findOrFail($request->edit_id);
-
-            // Calcula a data e hora do agendamento que está sendo editado
-            // Normaliza para evitar dupla especificação de hora (ex: "2026-05-06 00:00:00 08:00:00").
-            $availability = $editingAppointment->availability;
-
-            $datePart = $availability->date;
-            if (is_object($datePart) && method_exists($datePart, 'format')) {
-                $dateString = $datePart->format('Y-m-d');
-            } else {
-                // Caso seja string com hora, pega apenas a parte da data (YYYY-MM-DD)
-                $dateString = substr((string) $datePart, 0, 10);
-            }
-
-            // Garante que a parte da hora esteja no formato HH:MM:SS (ou pelo menos HH:MM)
-            $hourPart = (string) $availability->hour;
-            $hourString = substr($hourPart, 0, 8);
-
-            $agendamentoDate = Carbon::parse($dateString . ' ' . $hourString);
-
-            // Calcula a diferença em horas. Se for menor que 48h, bloqueia a edição e devolve pro painel.
-            if (now()->diffInHours($agendamentoDate, false) < 48) {
-                return redirect()->route('clients.appointments');
-            }
+                ->whereIn('status', ['pending', 'confirmed'])
+                ->whereHas('availability', function ($query) {
+                    $query->where('date', '>=', Carbon::today());
+                })
+                ->get();
         }
 
         return Inertia::render('Appointment/Schedule', [
@@ -76,13 +85,14 @@ class AppointmentController extends Controller
             'availableSlots' => $groupedSlots,
             'loggedClient' => $loggedClient,
             'editingAppointment' => $editingAppointment,
+            'clientUpcomingAppointments' => $clientUpcomingAppointments,
             'flash' => [
                 'success' => session('success')
             ]
         ]);
     }
 
-    // Recebe o formulário de agendamento, valida os dados, cria o cliente (se necessário), cria o agendamento e marca o horário como indisponível
+    // Cria um novo agendamento, ou atualiza um existente se um edit_id for passado, seguindo a mesma lógica de validação e criação/atualização
     public function store(Request $request)
     {
         $request->validate([
@@ -93,7 +103,7 @@ class AppointmentController extends Controller
             'services' => 'required|array|min:1',
         ]);
 
-        // Se o cliente já estiver logado, usa ele. Senão, tenta autenticar via OTP. Se falhar, retorna com erro. Se passar, cria o cliente e loga ele.
+        // Se o cliente já estiver logado, usa o ID dele. Caso contrário, valida o OTP e loga o cliente automaticamente
         if (Auth::guard('clients')->check()) {
             $client = Auth::guard('clients')->user();
         } else {
@@ -116,13 +126,13 @@ class AppointmentController extends Controller
             Auth::guard('clients')->login($client, true);
         }
 
-        // Busca a disponibilidade selecionada, garantindo que ela ainda esteja disponível
+        // Busca a disponibilidade selecionada, garantindo que ainda esteja disponível
         $availability = Availability::where('date', $request->date)
             ->where('hour', $request->time . ':00')
             ->where('is_available', true)
             ->firstOrFail();
 
-        // Cria o agendamento, associando os serviços selecionados, e marca a disponibilidade como indisponível
+        // Cria o agendamento e associa os serviços selecionados
         $appointment = Appointment::create([
             'client_id' => $client->id,
             'availability_id' => $availability->id,
@@ -130,7 +140,7 @@ class AppointmentController extends Controller
             'notes' => 'Agendamento via site',
         ]);
 
-        // Associa os serviços selecionados ao agendamento
+        // Pluck dos IDs dos serviços selecionados e attach na tabela pivot
         $serviceIds = collect($request->services)->pluck('id');
         $appointment->services()->attach($serviceIds);
 
@@ -140,7 +150,7 @@ class AppointmentController extends Controller
         return redirect()->route('agendar')->with('success', 'Agendamento confirmado com sucesso!');
     }
 
-
+    // Atualiza um agendamento existente, seguindo a mesma lógica de criação, mas liberando a disponibilidade antiga e marcando a nova como indisponível
     public function update(Request $request, int $id)
     {
         $request->validate([
@@ -149,28 +159,28 @@ class AppointmentController extends Controller
             'services' => 'required|array|min:1',
         ]);
 
-        // Busca o agendamento do cliente logado, garantindo que ele seja dono do agendamento que está tentando editar
+        // Busca o agendamento do cliente logado para edição, garantindo que ele seja o dono do agendamento
         $appointment = Appointment::where('client_id', Auth::guard('clients')->id())->findOrFail($id);
 
-        // Marca a disponibilidade antiga como disponível novamente
+        // Libera a disponibilidade antiga, marcando como disponível novamente
         $oldAvailability = Availability::find($appointment->availability_id);
         if ($oldAvailability) {
             $oldAvailability->update(['is_available' => true]);
         }
-        // Busca a nova disponibilidade selecionada, garantindo que ela ainda esteja disponível
 
+        // Busca a nova disponibilidade selecionada, garantindo que ainda esteja disponível
         $newAvailability = Availability::where('date', $request->date)
             ->where('hour', $request->time . ':00')
             ->where('is_available', true)
             ->firstOrFail();
 
-        // Atualiza o agendamento com a nova disponibilidade e os novos serviços selecionados, e marca a nova disponibilidade como indisponível
+        // Atualiza o agendamento com a nova disponibilidade e status "pending" (para reavaliação do admin)
         $appointment->update([
             'availability_id' => $newAvailability->id,
             'status' => 'pending'
         ]);
 
-        // Sincroniza os serviços selecionados com o agendamento (remove os antigos e associa os novos)
+        // Pluck dos IDs dos serviços selecionados e sync na tabela pivot (remove os antigos e adiciona os novos
         $serviceIds = collect($request->services)->pluck('id');
         $appointment->services()->sync($serviceIds);
 
