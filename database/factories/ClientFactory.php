@@ -20,7 +20,7 @@ class ClientFactory extends Factory
         return [
             'full_name'    => $this->faker->name(),
             'email'        => $this->faker->unique()->safeEmail(),
-            'phone'        => '55' . $this->faker->phoneNumberCleared(),
+            'phone'        => $this->faker->cellphoneNumber(false),
             'cpf'          => $this->faker->cpf(false),
             'birth_date'   => $this->faker->date('Y-m-d', '-18 years'), // Clientes com +18 anos
 
