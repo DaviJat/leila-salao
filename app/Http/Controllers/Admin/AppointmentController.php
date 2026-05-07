@@ -17,60 +17,103 @@ class AppointmentController extends Controller
     public function index(Request $request)
     {
         $now = Carbon::now();
-
         $startDate = $request->input('start_date', $now->copy()->startOfWeek()->format('Y-m-d'));
         $endDate = $request->input('end_date', $now->copy()->endOfWeek()->format('Y-m-d'));
+        $search = trim((string) $request->input('search', ''));
+        $statusList = $request->input('status', ['pending', 'confirmed']);
+        $perPage = (int) $request->input('per_page', 10);
+        $perPage = in_array($perPage, [10, 20, 50], true) ? $perPage : 10;
+        $sortField = $request->input('sort_field', 'date');
+        $sortOrder = (int) $request->input('sort_order', 1);
+        $sortOrder = $sortOrder === -1 ? -1 : 1;
 
-        $sortBy = $request->input('sort_by', 'date');
-        $sortDir = $request->input('sort_dir', 'asc');
-
-        $query = Appointment::with(['client', 'services', 'availability'])
-            ->whereHas('availability', function ($q) use ($startDate, $endDate) {
-                $q->whereBetween('date', [$startDate, $endDate]);
-            });
-
-        if ($sortBy === 'client') {
-            $query->join('clients', 'appointments.client_id', '=', 'clients.id')
-                ->orderBy('clients.full_name', $sortDir)
-                ->select('appointments.*');
-        } elseif ($sortBy === 'status') {
-            $query->orderBy('status', $sortDir);
-        } else {
-            $query->join('availabilities', 'appointments.availability_id', '=', 'availabilities.id')
-                ->orderBy('availabilities.date', $sortDir)
-                ->orderBy('availabilities.hour', $sortDir)
-                ->select('appointments.*');
+        if (is_string($statusList)) {
+            $statusList = !empty($statusList) ? [$statusList] : [];
+        } elseif (!is_array($statusList)) {
+            $statusList = [];
         }
 
-        $appointments = $query->get();
+        $validSortFields = ['date', 'client_name', 'status', 'total_price'];
+        $sortField = in_array($sortField, $validSortFields, true) ? $sortField : 'date';
 
-        $availabilities = Availability::where('is_available', true)
-            ->where(function ($query) {
-                $query->where('date', '>', Carbon::today())
-                    ->orWhere(function ($q) {
-                        $q->where('date', '=', Carbon::today())
-                            ->where('hour', '>', Carbon::now()->format('H:i:s'));
-                    });
+        $appointments = Appointment::with(['client', 'availability', 'services'])
+            ->join('availabilities', 'appointments.availability_id', '=', 'availabilities.id')
+            ->leftJoin('clients', 'appointments.client_id', '=', 'clients.id')
+            ->select('appointments.*')
+            ->selectRaw('(select coalesce(sum(services.price), 0) from appointment_service inner join services on services.id = appointment_service.service_id where appointment_service.appointment_id = appointments.id) as total_price_sort')
+            ->whereBetween('availabilities.date', [$startDate, $endDate])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->whereHas('client', function ($clientQuery) use ($search) {
+                    $clientQuery
+                        ->where('full_name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%");
+                });
             })
-            ->orderBy('date')->orderBy('hour')->get();
+            ->when(!empty($statusList), function ($query) use ($statusList) {
+                $validStatuses = array_intersect($statusList, ['pending', 'confirmed', 'canceled', 'completed']);
+                if (!empty($validStatuses)) {
+                    $query->whereIn('appointments.status', $validStatuses);
+                }
+            })
+            ->when($sortField === 'date', function ($query) use ($sortOrder) {
+                $query->orderBy('availabilities.date', $sortOrder === -1 ? 'desc' : 'asc')
+                    ->orderBy('availabilities.hour', $sortOrder === -1 ? 'desc' : 'asc');
+            })
+            ->when($sortField === 'client_name', function ($query) use ($sortOrder) {
+                $query->orderBy('clients.full_name', $sortOrder === -1 ? 'desc' : 'asc')
+                    ->orderBy('availabilities.date')
+                    ->orderBy('availabilities.hour');
+            })
+            ->when($sortField === 'status', function ($query) use ($sortOrder) {
+                $query->orderBy('appointments.status', $sortOrder === -1 ? 'desc' : 'asc')
+                    ->orderBy('availabilities.date')
+                    ->orderBy('availabilities.hour');
+            })
+            ->when($sortField === 'total_price', function ($query) use ($sortOrder) {
+                $query->orderBy('total_price_sort', $sortOrder === -1 ? 'desc' : 'asc')
+                    ->orderBy('availabilities.date')
+                    ->orderBy('availabilities.hour');
+            })
+            ->paginate($perPage)
+            ->withQueryString()
+            ->through(function ($appointment) {
+                $appointment->append('total_price');
+                return $appointment;
+            });
 
-        $availableSlots = $availabilities->groupBy(function ($item) {
-            return $item->date->format('Y-m-d');
-        })->map(function ($group) {
-            return $group->pluck('hour')->map(fn($time) => substr($time, 0, 5));
-        });
+        $services = Service::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'price']);
 
-        return Inertia::render('Admin/Appointments/Index', [
+        $availabilitiesByDate = Availability::query()
+            ->available()
+            ->whereDate('date', '>=', now()->toDateString())
+            ->orderBy('date')
+            ->orderBy('hour')
+            ->get(['id', 'date', 'hour'])
+            ->groupBy(fn($availability) => Carbon::parse($availability->date)->toDateString())
+            ->map(fn($items) => $items->map(fn($item) => [
+                'id' => $item->id,
+                'hour' => Carbon::parse($item->hour)->format('H:i'),
+            ])->values())
+            ->toArray();
+
+        $allClients = Client::all(['id', 'full_name', 'phone']);
+
+        return inertia('Admin/Appointments', [
             'appointments' => $appointments,
+            'services' => $services,
+            'availabilitiesByDate' => $availabilitiesByDate,
+            'allClients' => $allClients,
             'filters' => [
                 'start_date' => $startDate,
                 'end_date' => $endDate,
-                'sort_by' => $sortBy,
-                'sort_dir' => $sortDir,
+                'search' => $search,
+                'status' => $statusList,
+                'per_page' => $perPage,
+                'sort_field' => $sortField,
+                'sort_order' => $sortOrder,
             ],
-            'dbServices' => Service::all(),
-            'availableSlots' => $availableSlots,
-            'allClients' => Client::all(['id', 'full_name', 'phone']), // <-- ENVIANDO CLIENTES PARA BUSCA
         ]);
     }
 
@@ -108,21 +151,32 @@ class AppointmentController extends Controller
         return back()->with('success', 'Agendamento criado!');
     }
 
-    public function updateStatus(Request $request, int $id)
+    public function updateStatus(Request $request, int $id, WhatsAppService $whatsAppService)
     {
         $request->validate(['status' => 'required|in:pending,confirmed,canceled,completed']);
 
         $appointment = Appointment::with(['client', 'availability'])->findOrFail($id);
+        $previousStatus = $appointment->status;
+        $newStatus = $request->status;
+
+        if ($previousStatus !== 'canceled' && $newStatus === 'canceled') {
+            $appointment->availability->update(['is_available' => true]);
+        }
+
+        if ($previousStatus === 'canceled' && $newStatus !== 'canceled') {
+            $appointment->availability->update(['is_available' => false]);
+        }
+
         $appointment->update(['status' => $request->status]);
 
-        if ($request->status === 'canceled') {
-            $appointment->availability->update(['is_available' => true]);
+        if (in_array($newStatus, ['confirmed', 'canceled'], true) && $appointment->client) {
+            $whatsAppService->sendStatusNotification($appointment->client, $appointment, $newStatus);
         }
 
         return back()->with('success', 'Status atualizado!');
     }
 
-    public function update(Request $request, int $id)
+    public function update(Request $request, int $id, WhatsAppService $whatsAppService)
     {
         $request->validate([
             'date' => 'required|date',
@@ -130,8 +184,11 @@ class AppointmentController extends Controller
             'services' => 'required|array|min:1',
         ]);
 
-        $appointment = Appointment::with('availability')->findOrFail($id);
+        $appointment = Appointment::with(['client', 'availability', 'services'])->findOrFail($id);
         $newTime = strlen($request->time) == 5 ? $request->time . ':00' : $request->time;
+        $previousDate = Carbon::parse($appointment->availability->date)->toDateString();
+        $previousTime = Carbon::parse($appointment->availability->hour)->format('H:i:s');
+        $previousServiceIds = $appointment->services->pluck('id')->sort()->values()->all();
 
         // Se a Leila alterou o dia ou a hora, atualizamos a disponibilidade no banco
         if ($appointment->availability->date != $request->date || $appointment->availability->hour != $newTime) {
@@ -153,6 +210,14 @@ class AppointmentController extends Controller
         // Atualiza os serviços (adiciona/remove do banco)
         $serviceIds = collect($request->services)->pluck('id');
         $appointment->services()->sync($serviceIds);
+
+        $appointment->load(['client', 'availability', 'services']);
+        $updatedServiceIds = $appointment->services->pluck('id')->sort()->values()->all();
+        $hasChanges = $previousDate !== $request->date || $previousTime !== $newTime || $previousServiceIds !== $updatedServiceIds;
+
+        if ($hasChanges && $appointment->client) {
+            $whatsAppService->sendAdminActionNotification($appointment->client, $appointment, false);
+        }
 
         return back()->with('success', 'Agendamento atualizado com sucesso!');
     }

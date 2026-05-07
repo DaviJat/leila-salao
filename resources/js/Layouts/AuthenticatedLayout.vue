@@ -19,10 +19,9 @@ const isRouteActive = (routeName) => {
         <div class="relative z-10 flex flex-col min-h-screen">
             <div class="pt-6 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto">
                 <nav class="bg-white rounded-full shadow-sm px-6 py-3 sm:px-8 flex items-center justify-between border border-gray-100">
-                    <div class="flex items-center">
-                        <Link :href="route('dashboard')" class="flex items-center gap-3 transition-transform duration-300 hover:scale-105 group">
+                    <div class="flex items-center gap-3">
+                        <Link :href="route('admin.dashboard')" class="flex items-center gap-3 transition-transform duration-300 hover:scale-105 group">
                             <img src="/images/logo-cabeleila.svg" alt="Logo Cabeleila" class="h-8 sm:h-10 w-auto object-contain mb-1" />
-
                             <div class="hidden sm:flex items-center">
                                 <div class="h-8 w-px bg-gray-200 mr-3"></div>
                                 <span class="py-1 text-[#547558] text-md font-light uppercase tracking-[0.2em]"> Admin </span>
@@ -32,9 +31,9 @@ const isRouteActive = (routeName) => {
 
                     <div class="hidden md:flex items-center space-x-10">
                         <Link
-                            :href="route('dashboard')"
+                            :href="route('admin.dashboard')"
                             class="text-sm font-medium transition-colors hover:text-[#547558]"
-                            :class="isRouteActive('dashboard') ? 'text-[#547558] font-bold border-b-2 border-[#547558]' : 'text-gray-600'">
+                            :class="isRouteActive('admin.dashboard') ? 'text-[#547558] font-bold border-b-2 border-[#547558]' : 'text-gray-600'">
                             Dashboard
                         </Link>
                         <Link
@@ -42,6 +41,18 @@ const isRouteActive = (routeName) => {
                             class="text-sm font-medium transition-colors hover:text-[#547558]"
                             :class="isRouteActive('admin.appointments') ? 'text-[#547558] font-bold border-b-2 border-[#547558]' : 'text-gray-600'">
                             Agenda
+                        </Link>
+                        <Link
+                            :href="route('admin.services.index')"
+                            class="text-sm font-medium transition-colors hover:text-[#547558]"
+                            :class="isRouteActive('admin.services') ? 'text-[#547558] font-bold border-b-2 border-[#547558]' : 'text-gray-600'">
+                            Serviços
+                        </Link>
+                        <Link
+                            :href="route('admin.availabilities.index')"
+                            class="text-sm font-medium transition-colors hover:text-[#547558]"
+                            :class="isRouteActive('admin.availabilities') ? 'text-[#547558] font-bold border-b-2 border-[#547558]' : 'text-gray-600'">
+                            Horários
                         </Link>
                         <Link
                             :href="route('admin.clients.index')"
@@ -107,8 +118,12 @@ const isRouteActive = (routeName) => {
                         v-show="showingNavigationDropdown"
                         class="sm:hidden mt-2 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 overflow-hidden relative z-50">
                         <div class="pt-2 pb-3 space-y-1 px-2">
-                            <ResponsiveNavLink :href="route('dashboard')" :active="isRouteActive('dashboard')" class="rounded-lg">Dashboard</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.dashboard')" :active="isRouteActive('admin.dashboard')" class="rounded-lg">Dashboard</ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('admin.appointments.index')" :active="isRouteActive('admin.appointments')" class="rounded-lg">Agenda</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.services.index')" :active="isRouteActive('admin.services')" class="rounded-lg">Serviços</ResponsiveNavLink>
+                            <ResponsiveNavLink :href="route('admin.availabilities.index')" :active="isRouteActive('admin.availabilities')" class="rounded-lg"
+                                >Horários</ResponsiveNavLink
+                            >
                             <ResponsiveNavLink :href="route('admin.clients.index')" :active="isRouteActive('admin.clients')" class="rounded-lg">Clientes</ResponsiveNavLink>
                         </div>
                         <div class="pt-4 pb-2 border-t border-gray-100 bg-gray-50/50">

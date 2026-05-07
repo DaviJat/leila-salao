@@ -3,35 +3,47 @@
 @tailwind utilities;
 
 @layer base {
-    /* Scrollbar Personalizada */
     html {
         overflow-x: hidden;
         overflow-y: auto;
         scroll-behavior: smooth;
+        /* Usa a cor do seu preset se possível, ou o hex exato do primary.500 */
         scrollbar-width: thin;
-        scrollbar-color: #547558 #faf8f5;
+        scrollbar-color: #5a7253 #faf8f5;
     }
 
-    /* Suporte para navegadores baseados em WebKit (Chrome, Edge, Safari) */
+    /* Suporte para WebKit */
     ::-webkit-scrollbar {
-        width: 12px; /* Largura da barra vertical */
-        height: 12px; /* Altura da barra horizontal (se houver) */
+        width: 10px; /* Reduzi um pouco para ficar mais elegante */
+        height: 10px;
     }
 
-    /* O fundo (trilho) da barra de rolagem */
     ::-webkit-scrollbar-track {
-        background: #faf8f5; /* Cor bege clarinha do fundo do site */
+        background: #faf8f5;
     }
 
-    /* A barrinha que você clica e arrasta (polegar) */
     ::-webkit-scrollbar-thumb {
-        background-color: #547558; /* Verde do template */
-        border-radius: 20px; /* Deixa as pontas bem arredondadas */
-        border: 3px solid #faf8f5; /* Cria uma "margem" dando um efeito flutuante */
+        background-color: #5a7253; /* Cor Primary 500 do seu preset */
+        border-radius: 20px;
+        border: 2px solid #faf8f5; /* Ajustado para 2px para não 'sumir' com a barra */
     }
 
-    /* Efeito ao passar o mouse por cima do scroll */
     ::-webkit-scrollbar-thumb:hover {
-        background-color: #435e46; /* Verde um pouco mais escuro */
+        background-color: #4a5e44; /* Cor Primary 600 do seu preset */
     }
+
+    /* Ajuste para garantir que o body ocupe a tela toda sem saltos de layout */
+    body {
+        @apply antialiased text-gray-800;
+        background-color: #faf8f5;
+    }
+}
+
+/* 
+   DICA EXTRA: 
+   Se o PrimeVue adicionar um foco (outline) azul ou de outra cor 
+   nos links do menu, você pode resetar aqui: 
+*/
+:focus {
+    outline: none !important;
 }

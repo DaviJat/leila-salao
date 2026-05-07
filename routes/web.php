@@ -4,6 +4,10 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\AppointmentController as AdminAppointmentController;
+use App\Http\Controllers\Admin\ClientController as AdminClientController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\ServiceController as AdminServiceController;
+use App\Http\Controllers\Admin\AvailabilityController as AdminAvailabilityController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -12,21 +16,37 @@ Route::get('/', function () {
     return Inertia::render('Home');
 })->name('home');
 
-// Rotas de Dashboard (Protegidas por autenticação e verificação de email)
+// Admin dashboard
 Route::get('/dashboard', function () {
-    return Inertia::render('Admin/Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+    return redirect()->route('admin.dashboard');
+})->middleware('auth')->name('dashboard');
+Route::get('/admin/dashboard', [DashboardController::class, 'index'])->middleware('auth')->name('admin.dashboard');
+Route::get('/admin/dashboard/data', [DashboardController::class, 'data'])->middleware('auth')->name('admin.dashboard.data');
 
 // Rotas do Painel Administrativo (Protegidas por autenticação)
-Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/agendamentos', [AdminAppointmentController::class, 'index'])->name('appointments.index');
     Route::post('/agendamentos', [AdminAppointmentController::class, 'store'])->name('appointments.store');
     Route::put('/agendamentos/{id}', [AdminAppointmentController::class, 'update'])->name('appointments.update');
     Route::patch('/agendamentos/{id}/status', [AdminAppointmentController::class, 'updateStatus'])->name('appointments.status');
 
     // Clientes
-    Route::get('/clientes', [\App\Http\Controllers\Admin\ClientController::class, 'index'])->name('clients.index');
-    Route::patch('/clientes/{id}', [\App\Http\Controllers\Admin\ClientController::class, 'update'])->name('clients.update');
+    Route::get('/clientes', [AdminClientController::class, 'index'])->name('clients.index');
+    Route::post('/clientes', [AdminClientController::class, 'store'])->name('clients.store');
+    Route::patch('/clientes/{id}', [AdminClientController::class, 'update'])->name('clients.update');
+
+    // Serviços
+    Route::get('/servicos', [AdminServiceController::class, 'index'])->name('services.index');
+    Route::post('/servicos', [AdminServiceController::class, 'store'])->name('services.store');
+    Route::patch('/servicos/{id}', [AdminServiceController::class, 'update'])->name('services.update');
+    Route::delete('/servicos/{id}', [AdminServiceController::class, 'destroy'])->name('services.destroy');
+
+    // Horários Disponíveis
+    Route::get('/horarios', [AdminAvailabilityController::class, 'index'])->name('availabilities.index');
+    Route::post('/horarios', [AdminAvailabilityController::class, 'store'])->name('availabilities.store');
+    Route::post('/horarios/padrao', [AdminAvailabilityController::class, 'storePattern'])->name('availabilities.pattern');
+    Route::patch('/horarios/{id}/status', [AdminAvailabilityController::class, 'updateStatus'])->name('availabilities.updateStatus');
+    Route::delete('/horarios/{id}', [AdminAvailabilityController::class, 'destroy'])->name('availabilities.destroy');
 });
 
 // Rotas de Perfil (Protegidas por autenticação)
