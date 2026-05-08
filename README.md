@@ -202,7 +202,7 @@ leila-salao/
 │   │   ├── Components/                            # Componentes Vue reutilizáveis
 │   │   ├── Layouts/
 │   │   │   ├── AuthenticatedLayout.vue            # Layout padrão com navbar
-│   │   │   └── GuestLayout.vue                    # Layout sem autenticação
+│   │   │   └── SiteLayout.vue                    # Layout sem autenticação
 │   │   └── Pages/
 │   │       ├── Admin/
 │   │       │   ├── Appointments.vue               # Página CRUD de agendamentos
