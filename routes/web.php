@@ -20,11 +20,11 @@ Route::get('/', function () {
 Route::get('/dashboard', function () {
     return redirect()->route('admin.dashboard');
 })->middleware('auth')->name('dashboard');
-Route::get('/admin/dashboard', [DashboardController::class, 'index'])->middleware('auth')->name('admin.dashboard');
-Route::get('/admin/dashboard/data', [DashboardController::class, 'data'])->middleware('auth')->name('admin.dashboard.data');
 
 // Rotas do Painel Administrativo (Protegidas por autenticação)
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
     Route::get('/agendamentos', [AdminAppointmentController::class, 'index'])->name('appointments.index');
     Route::post('/agendamentos', [AdminAppointmentController::class, 'store'])->name('appointments.store');
     Route::put('/agendamentos/{id}', [AdminAppointmentController::class, 'update'])->name('appointments.update');

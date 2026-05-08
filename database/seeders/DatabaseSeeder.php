@@ -14,101 +14,119 @@ use Carbon\Carbon;
 
 class DatabaseSeeder extends Seeder
 {
-    // O WithoutModelEvents desativa eventos (como envio de e-mails/notificações) 
-    // durante o seed, deixando o processo muito mais rápido.
+    /**
+     * Desativa a emissão de eventos de modelo para otimizar o tempo de execução da seed.
+     */
     use WithoutModelEvents;
 
     /**
-     * Seed the application's database.
+     * Executa as seeds do banco de dados.
      */
     public function run(): void
     {
-        // Criando um usuário admin fixo para facilitar o acesso ao painel de administração, com credenciais conhecidas.
+        // Criação da conta de administrador do sistema
         User::factory()->create([
             'name' => 'Leila Admin',
             'email' => 'leila@example.com',
             'role' => 'admin',
         ]);
 
-        // Criando mais 2 usuários comuns para testes, usando a factory padrão do Laravel.
+        // Criação de usuários secundários para testes de permissão
         User::factory(2)->create();
 
-        // Criando os 6 serviços exatos oferecidos pelo salão utilizando Sequence para garantir nomes, preços e durações reais.
+        // Definição do catálogo de serviços com escopo real de preços e durações
         $services = Service::factory()
-            ->count(6)
+            ->count(7)
             ->state(new Sequence(
-                ['name' => 'Corte e Visagismo', 'price' => 80.00, 'duration_minutes' => 45],
-                ['name' => 'Coloração e Mechas', 'price' => 250.00, 'duration_minutes' => 150],
+                ['name' => 'Corte', 'price' => 80.00, 'duration_minutes' => 45],
+                ['name' => 'Coloração', 'price' => 250.00, 'duration_minutes' => 150],
                 ['name' => 'Tratamento Capilar', 'price' => 120.00, 'duration_minutes' => 60],
-                ['name' => 'Penteado e Make', 'price' => 180.00, 'duration_minutes' => 90],
+                ['name' => 'Penteado', 'price' => 180.00, 'duration_minutes' => 90],
                 ['name' => 'Escova Modeladora', 'price' => 60.00, 'duration_minutes' => 40],
-                ['name' => 'Spa do Couro Cabeludo', 'price' => 100.00, 'duration_minutes' => 50],
+                ['name' => 'Manicure', 'price' => 100.00, 'duration_minutes' => 30],
+                ['name' => 'Pedicure', 'price' => 110.00, 'duration_minutes' => 30],
             ))
             ->create();
 
-        // Criando 10 clientes fictícios para preencher a tabela de clientes, cada um com dados realistas gerados pela factory.
-        $clients = Client::factory(10)->create();
+        // Geração da base de clientes fictícios
+        $clients = Client::factory(50)->create();
 
-        // Gerando a grade de horários disponíveis para os próximos 30 dias, respeitando o horário de funcionamento do salão.
-        $startDate = Carbon::today();
-        $endDate = Carbon::today()->addDays(30);
-        $createdAvailabilities = collect();
+        // Configuração do período de geração: Primeiro dia do mês atual até o último dia do mês seguinte
+        $today = Carbon::today();
+        $startDate = $today->copy()->startOfMonth();
+        $endDate = $today->copy()->addMonth()->endOfMonth();
 
-        for ($date = $startDate; $date->lte($endDate); $date->addDay()) {
+        // Iteração diária para montagem da grade de horários e agendamentos
+        for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
 
-            // Ignorando os domingos, pois o salão estará fechado.
+            // Regra de negócio: Salão não tem expediente aos domingos
             if ($date->isSunday()) {
                 continue;
             }
 
             $hours = [];
 
-            // Definindo os horários para dias úteis (Segunda a Sexta) das 8h às 12h e das 14h às 18h.
+            // Regra de negócio: Expediente em dias úteis (Segunda a Sexta)
             if ($date->isWeekday()) {
                 $hours = ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00'];
             }
-            // Definindo os horários para os Sábados, funcionando apenas na parte da manhã, das 8h às 12h.
+            // Regra de negócio: Expediente aos Sábados (Apenas período matutino)
             elseif ($date->isSaturday()) {
                 $hours = ['08:00', '09:00', '10:00', '11:00'];
             }
 
-            // Inserindo os horários gerados no banco de dados para o dia correspondente.
             foreach ($hours as $hour) {
+                // Registro do horário (slot) na tabela de disponibilidades
                 $availability = Availability::create([
                     'date' => $date->format('Y-m-d'),
                     'hour' => $hour . ':00',
                     'is_available' => true,
                 ]);
-                $createdAvailabilities->push($availability);
-            }
-        }
 
-        // Criando de 1 a 3 agendamentos para cada cliente criado, associando cada agendamento a um cliente e a uma disponibilidade real recém-criada, e atribuindo de 1 a 3 serviços.
-        foreach ($clients as $client) {
-
-            // Pegando uma disponibilidade aleatória que ainda esteja marcada como livre.
-            $slot = $createdAvailabilities->where('is_available', true)->random();
-
-            $appointment = Appointment::factory()->create([
-                'client_id' => $client->id,
-                'availability_id' => $slot->id,
-            ]);
-
-            // Associando de 1 a 3 serviços aleatórios da nossa lista para este agendamento na tabela pivot.
-            $appointment->services()->attach(
-                $services->random(rand(1, 3))->pluck('id')->toArray()
-            );
-
-            // Atualizando o status da disponibilidade no banco de dados para ocupado (is_available = false).
-            $slot->update(['is_available' => false]);
-
-            // Atualizando a nossa collection em memória para garantir que este horário não seja pego por outro cliente no loop.
-            $createdAvailabilities = $createdAvailabilities->map(function ($item) use ($slot) {
-                if ($item->id === $slot->id) {
-                    $item->is_available = false;
+                // Simulação da taxa de ocupação: Maior probabilidade no mês vigente, menor no mês seguinte
+                $ocupationChance = 0;
+                if ($date->month === $today->month) {
+                    $ocupationChance = 75;
+                } elseif ($date->month === $today->copy()->addMonth()->month) {
+                    $ocupationChance = 30;
                 }
-                return $item;
-            });
+
+                // Efetivação do agendamento mediante a probabilidade calculada
+                if (rand(1, 100) <= $ocupationChance) {
+
+                    // Determinação contextual do status do agendamento
+                    $status = 'pending';
+                    if ($date->lt($today)) {
+                        $status = 'completed';
+                    } elseif ($date->eq($today)) {
+                        $status = rand(1, 100) <= 80 ? 'confirmed' : 'pending';
+                    } else {
+                        $status = rand(1, 100) <= 50 ? 'confirmed' : 'pending';
+
+                        // Simulação de taxa de cancelamento prévio para datas futuras (5% de chance)
+                        if (rand(1, 100) <= 5) {
+                            $status = 'canceled';
+                        }
+                    }
+
+                    // Vínculo do agendamento a um cliente aleatório
+                    $appointment = Appointment::factory()->create([
+                        'client_id' => $clients->random()->id,
+                        'availability_id' => $availability->id,
+                        'status' => $status,
+                    ]);
+
+                    // Associação da tabela pivot (Appointment x Service) com 1 a 2 serviços
+                    $appointment->services()->attach(
+                        $services->random(rand(1, 2))->pluck('id')->toArray()
+                    );
+
+                    // Bloqueio da disponibilidade caso o agendamento esteja ativo
+                    if ($status !== 'canceled') {
+                        $availability->update(['is_available' => false]);
+                    }
+                }
+            }
         }
     }
 }

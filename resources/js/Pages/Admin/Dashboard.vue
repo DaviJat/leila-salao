@@ -1,283 +1,277 @@
 <script setup>
+import { ref, onMounted, watch } from 'vue';
+import { Head, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+
+import Button from 'primevue/button';
+import DatePicker from 'primevue/datepicker';
 import Chart from 'primevue/chart';
-import { ref, computed, onMounted } from 'vue';
-import { Head } from '@inertiajs/vue3';
 
 const props = defineProps({
-    earnings: { type: Array, default: () => [] },
-    topServices: { type: Array, default: () => [] },
-    appointmentsOverview: { type: Object, default: () => ({ byDay: [], totals: {} }) },
-    filters: { type: Object, default: () => ({ start_date: '', end_date: '' }) },
+    filters: Object,
+    kpis: Object,
+    charts: Object,
 });
 
-const groupBy = ref('day');
-const startDate = ref(props.filters.start_date || '');
-const endDate = ref(props.filters.end_date || '');
-
-const earnings = ref(props.earnings || []);
-const topServices = ref(props.topServices || []);
-const overview = ref(props.appointmentsOverview || { byDay: [], totals: {} });
-
-const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const [year, month, day] = String(dateStr).substring(0, 10).split('-');
-    return `${day}/${month}/${year}`;
+/** * Converte string de data ISO (YYYY-MM-DD) para objeto Date sem offset de fuso horário.
+ */
+const parseDate = (dateString) => {
+    if (!dateString) return null;
+    return new Date(dateString + 'T00:00:00');
 };
 
-const formatDateLabel = (dateStr, group) => {
-    if (!dateStr) return '';
-    const [year, month, day] = String(dateStr).substring(0, 10).split('-');
-    if (group === 'day') return `${day}/${month}`;
-    if (group === 'month') return `${month}/${year.slice(2)}`;
-    if (group === 'year') return year;
-    return `${day}/${month}/${year}`;
+const dateRange = ref([parseDate(props.filters?.start_date), parseDate(props.filters?.end_date)]);
+
+/** * Sincroniza o estado local do DatePicker com as propriedades enviadas pelo backend.
+ */
+watch(
+    () => props.filters,
+    (newFilters) => {
+        if (newFilters) {
+            dateRange.value = [parseDate(newFilters.start_date), parseDate(newFilters.end_date)];
+        }
+    },
+    { deep: true },
+);
+
+/** * Formata valores numéricos para o padrão monetário brasileiro (BRL).
+ */
+const formatCurrency = (value) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 };
 
-const formatDateToYYYYMMDD = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+/** * Converte objeto Date nativo para o formato de persistência do banco (YYYY-MM-DD).
+ */
+const formatDateToDB = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${month}-${day}`;
 };
 
-const setPeriod = (period) => {
+/** * Submete os filtros de data aplicados via Inertia, preservando o estado e o scroll atual da página.
+ */
+const applyFilter = (start, end) => {
+    if (!start || !end) return;
+
+    router.get(
+        window.location.pathname,
+        {
+            start_date: formatDateToDB(start),
+            end_date: formatDateToDB(end),
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+/** Métodos auxiliares de seleção rápida de períodos. */
+const setToday = () => {
     const today = new Date();
-    let start, end;
-
-    switch (period) {
-        case 'today':
-            // Hoje: mesma data
-            start = new Date(today);
-            end = new Date(today);
-            groupBy.value = 'day';
-            break;
-
-        case 'week':
-            // Semana atual: de segunda a domingo
-            start = new Date(today);
-            const dayOfWeek = start.getDay();
-            const offsetToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-            start.setDate(start.getDate() + offsetToMonday);
-            end = new Date(start);
-            end.setDate(start.getDate() + 6);
-            groupBy.value = 'day';
-            break;
-
-        case 'month':
-            // Mês: do dia 1 até o último dia do mês
-            start = new Date(today.getFullYear(), today.getMonth(), 1);
-            end = new Date(today.getFullYear(), today.getMonth() + 1, 0); // dia 0 do próximo mês = último dia deste
-            groupBy.value = 'day';
-            break;
-
-        case 'year':
-            // Ano: 1º de janeiro até 31 de dezembro
-            start = new Date(today.getFullYear(), 0, 1);
-            end = new Date(today.getFullYear(), 11, 31);
-            groupBy.value = 'month';
-            break;
-
-        default:
-            return;
-    }
-
-    startDate.value = formatDateToYYYYMMDD(start);
-    endDate.value = formatDateToYYYYMMDD(end);
-    fetchData();
+    applyFilter(today, today);
 };
 
-const fetchData = async () => {
-    const params = new URLSearchParams();
-    if (startDate.value) params.append('start_date', startDate.value);
-    if (endDate.value) params.append('end_date', endDate.value);
-    params.append('group', groupBy.value);
+const setWeek = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
+    const lastDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() + 6);
+    applyFilter(firstDay, lastDay);
+};
 
-    const res = await fetch(route('admin.dashboard.data') + '?' + params.toString(), { headers: { Accept: 'application/json' } });
-    if (res.ok) {
-        const data = await res.json();
-        earnings.value = data.earnings || [];
-        topServices.value = data.topServices || [];
-        overview.value = data.overview || { byDay: [], totals: {} };
+const setMonth = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    applyFilter(firstDay, lastDay);
+};
+
+const setYear = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), 0, 1);
+    const lastDay = new Date(today.getFullYear(), 11, 31);
+    applyFilter(firstDay, lastDay);
+};
+
+/** * Intercepta o evento de alteração manual do DatePicker para submissão imediata.
+ */
+const onDateSelect = (val) => {
+    if (val && val[0] && val[1]) {
+        applyFilter(val[0], val[1]);
     }
 };
 
-onMounted(() => fetchData());
+/** Estados de configuração para o componente Chart.js. */
+const lineChartData = ref({});
+const lineChartOptions = ref({});
+const barChartData = ref({});
+const barChartOptions = ref({});
 
-const totalEarnings = computed(() => earnings.value.reduce((s, r) => s + (r.total || 0), 0));
-const totalAppointments = computed(() => overview.value.totals.pending + overview.value.totals.confirmed + overview.value.totals.completed + overview.value.totals.canceled);
+/** * Estrutura a configuração de renderização dos gráficos, absorvendo dinamicamente as
+ * variáveis de cor do preset global do PrimeVue.
+ */
+const setChartData = () => {
+    if (!props.charts) return;
 
-const chartDataEarnings = computed(() => ({
-    labels: earnings.value.map((e) => formatDateLabel(e.period, groupBy.value)),
-    datasets: [
-        {
-            label: 'Receita (R$)',
-            data: earnings.value.map((e) => e.total || 0),
-            borderColor: '#547558',
-            backgroundColor: 'rgba(84, 117, 88, 0.1)',
-            fill: true,
-            tension: 0.4,
-            borderWidth: 2,
-            pointRadius: 5,
-            pointBackgroundColor: '#547558',
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2,
-            pointHoverRadius: 7,
-        },
-    ],
-}));
+    const documentStyle = getComputedStyle(document.documentElement);
+    const brandColor = documentStyle.getPropertyValue('--p-primary-500').trim() || '#5a7253';
+    const brandColorLight = brandColor + '20';
+    const textColor = documentStyle.getPropertyValue('--p-surface-700').trim() || '#51514e';
+    const textColorSecondary = documentStyle.getPropertyValue('--p-surface-500').trim() || '#7e7e7a';
+    const surfaceBorder = documentStyle.getPropertyValue('--p-surface-200').trim() || '#e8e8e6';
 
-const chartDataServices = computed(() => ({
-    labels: topServices.value.map((s) => s.name),
-    datasets: [
-        {
-            label: 'Realizados',
-            data: topServices.value.map((s) => s.performed),
-            backgroundColor: ['#547558', '#6b8e5f', '#7fa866', '#95b977', '#a8c88a', '#bbdb9c'],
-            borderColor: '#547558',
-            borderWidth: 1,
-        },
-    ],
-}));
-
-const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-        legend: {
-            display: true,
-            position: 'top',
-        },
-    },
-    scales: {
-        y: {
-            beginAtZero: true,
-            ticks: {
-                callback: function (value) {
-                    return 'R$ ' + value.toLocaleString('pt-BR');
-                },
+    lineChartData.value = {
+        labels: props.charts.receita.labels,
+        datasets: [
+            {
+                label: 'Receita (R$)',
+                data: props.charts.receita.data,
+                fill: true,
+                borderColor: brandColor,
+                backgroundColor: brandColorLight,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: brandColor,
             },
+        ],
+    };
+
+    lineChartOptions.value = {
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor, font: { family: 'Inter, sans-serif' } } } },
+        scales: {
+            x: { ticks: { color: textColorSecondary }, grid: { color: surfaceBorder } },
+            y: { ticks: { color: textColorSecondary }, grid: { color: surfaceBorder } },
         },
-    },
+    };
+
+    barChartData.value = {
+        labels: props.charts.servicos.labels,
+        datasets: [
+            {
+                label: 'Realizados',
+                data: props.charts.servicos.data,
+                backgroundColor: brandColor,
+                borderRadius: 4,
+            },
+        ],
+    };
+
+    barChartOptions.value = {
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor, font: { family: 'Inter, sans-serif' } } } },
+        scales: {
+            x: { ticks: { color: textColorSecondary }, grid: { display: false } },
+            y: { ticks: { color: textColorSecondary, stepSize: 1 }, grid: { color: surfaceBorder } },
+        },
+    };
 };
 
-const chartOptionsServices = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-        legend: {
-            display: true,
-            position: 'top',
-        },
+/** * Monitora atualizações do objeto charts para re-renderização em tempo real.
+ */
+watch(
+    () => props.charts,
+    () => {
+        setChartData();
     },
-    scales: {
-        y: {
-            beginAtZero: true,
-        },
-    },
-};
+    { deep: true },
+);
+
+onMounted(() => {
+    setChartData();
+});
 </script>
 
 <template>
-    <Head title="Dashboard" />
+    <Head title="Painel - Cabeleila" />
+
     <AuthenticatedLayout>
-        <div class="space-y-6">
-            <!-- HEADER COM FILTROS -->
-            <div class="bg-white/90 border border-gray-100 rounded-3xl p-6 shadow-sm">
-                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    <div>
-                        <h2 class="text-2xl font-bold text-gray-900 mb-1">Dashboard</h2>
-                        <p class="text-sm text-gray-600">{{ formatDate(startDate) }} a {{ formatDate(endDate) }}</p>
-                    </div>
+        <div class="max-w-7xl mx-auto font-sans transition-all duration-700 ease-out">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+                    <p class="text-sm text-gray-500 mt-1" v-if="props.filters?.start_date">
+                        {{ props.filters.start_date.split('-').reverse().join('/') }} a
+                        {{ props.filters.end_date.split('-').reverse().join('/') }}
+                    </p>
+                </div>
 
-                    <div class="flex flex-col sm:flex-row gap-3 items-end">
-                        <!-- Quick Periods -->
-                        <div class="flex flex-wrap gap-2">
-                            <button @click="setPeriod('today')" class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition">Hoje</button>
-                            <button @click="setPeriod('week')" class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition">Semana</button>
-                            <button @click="setPeriod('month')" class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition">Mês</button>
-                            <button @click="setPeriod('year')" class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition">Ano</button>
-                        </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <Button
+                        label="Hoje"
+                        size="small"
+                        outlined
+                        class="!rounded-full !text-gray-600 !border-gray-300 hover:!bg-primary-50 hover:!text-primary-700"
+                        @click="setToday" />
+                    <Button
+                        label="Semana"
+                        size="small"
+                        outlined
+                        class="!rounded-full !text-gray-600 !border-gray-300 hover:!bg-primary-50 hover:!text-primary-700"
+                        @click="setWeek" />
+                    <Button
+                        label="Mês"
+                        size="small"
+                        outlined
+                        class="!rounded-full !text-gray-600 !border-gray-300 hover:!bg-primary-50 hover:!text-primary-700"
+                        @click="setMonth" />
+                    <Button label="Ano" size="small" outlined class="!rounded-full !text-gray-600 !border-gray-300 hover:!bg-primary-50 hover:!text-primary-700" @click="setYear" />
 
-                        <!-- Date Inputs -->
-                        <input type="date" v-model="startDate" @change="fetchData" class="px-3 py-2 text-sm border border-gray-200 rounded-lg" />
-                        <input type="date" v-model="endDate" @change="fetchData" class="px-3 py-2 text-sm border border-gray-200 rounded-lg" />
-                    </div>
+                    <div class="w-px h-6 bg-gray-300 mx-2 hidden sm:block"></div>
+
+                    <DatePicker
+                        v-model="dateRange"
+                        selectionMode="range"
+                        dateFormat="dd/mm/yy"
+                        placeholder="Período Personalizado"
+                        showIcon
+                        class="w-full sm:w-auto"
+                        @update:modelValue="onDateSelect" />
                 </div>
             </div>
 
-            <!-- STATS CARDS -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white rounded-2xl border p-4 shadow-sm">
-                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Receita Total</div>
-                    <div class="text-2xl font-bold text-[#547558] mt-2">R$ {{ totalEarnings.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Receita Total</h3>
+                    <p class="text-2xl font-bold text-primary-600">{{ formatCurrency(kpis?.receitaTotal) }}</p>
                 </div>
-                <div class="bg-white rounded-2xl border p-4 shadow-sm">
-                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Total Agendamentos</div>
-                    <div class="text-2xl font-bold text-blue-600 mt-2">{{ totalAppointments }}</div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Agendamentos</h3>
+                    <p class="text-2xl font-bold text-blue-600">{{ kpis?.totalAgendamentos }}</p>
                 </div>
-                <div class="bg-white rounded-2xl border p-4 shadow-sm">
-                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Concluídos</div>
-                    <div class="text-2xl font-bold text-green-600 mt-2">{{ overview.totals.completed }}</div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Concluídos</h3>
+                    <p class="text-2xl font-bold text-green-600">{{ kpis?.concluidos }}</p>
                 </div>
-                <div class="bg-white rounded-2xl border p-4 shadow-sm">
-                    <div class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Pendentes</div>
-                    <div class="text-2xl font-bold text-amber-600 mt-2">{{ overview.totals.pending }}</div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Confirmados</h3>
+                    <p class="text-2xl font-bold text-teal-600">{{ kpis?.confirmados }}</p>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pendentes</h3>
+                    <p class="text-2xl font-bold text-orange-500">{{ kpis?.pendentes }}</p>
                 </div>
             </div>
 
-            <!-- MAIN CHARTS -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Earnings Chart -->
-                <div class="bg-white rounded-2xl border p-6 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 mb-4">Evolução de Receita</h3>
-                    <Chart type="line" :data="chartDataEarnings" :options="chartOptions" style="height: 320px" />
-                </div>
-
-                <!-- Services Chart -->
-                <div class="bg-white rounded-2xl border p-6 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 mb-4">Serviços Mais Realizados</h3>
-                    <Chart v-if="topServices.length" type="bar" :data="chartDataServices" :options="chartOptionsServices" style="height: 320px" />
-                    <div v-else class="flex items-center justify-center h-80 text-gray-400">Sem dados</div>
-                </div>
-            </div>
-
-            <!-- BOTTOM SECTION -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Status Summary -->
-                <div class="lg:col-span-2 bg-white rounded-2xl border p-6 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 mb-4">Status dos Agendamentos</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        <div class="text-center">
-                            <div class="text-3xl font-bold text-amber-600">{{ overview.totals.pending }}</div>
-                            <div class="text-xs font-semibold text-gray-500 mt-1">Pendentes</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-3xl font-bold text-blue-600">{{ overview.totals.confirmed }}</div>
-                            <div class="text-xs font-semibold text-gray-500 mt-1">Confirmados</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-3xl font-bold text-green-600">{{ overview.totals.completed }}</div>
-                            <div class="text-xs font-semibold text-gray-500 mt-1">Concluídos</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-3xl font-bold text-red-600">{{ overview.totals.canceled }}</div>
-                            <div class="text-xs font-semibold text-gray-500 mt-1">Cancelados</div>
-                        </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-lg font-bold text-gray-900 mb-6">Evolução de Receita</h3>
+                    <div class="h-80 relative">
+                        <Chart type="line" :data="lineChartData" :options="lineChartOptions" class="h-full w-full" />
                     </div>
                 </div>
 
-                <!-- Agenda -->
-                <div class="bg-white rounded-2xl border p-6 shadow-sm">
-                    <h3 class="text-lg font-bold text-gray-900 mb-4">Próximos Dias</h3>
-                    <div class="space-y-3 max-h-96 overflow-y-auto">
-                        <div v-for="d in overview.byDay.slice(0, 10)" :key="d.day" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div>
-                                <div class="font-semibold text-gray-900">{{ formatDate(d.day) }}</div>
-                            </div>
-                            <div class="text-sm font-bold text-[#547558] bg-[#547558]/10 px-3 py-1 rounded-full">{{ d.total }}</div>
-                        </div>
-                        <div v-if="!overview.byDay.length" class="text-gray-400 text-sm text-center py-6">Sem agendamentos</div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-lg font-bold text-gray-900 mb-6">Serviços Mais Realizados</h3>
+                    <div class="h-80 relative">
+                        <Chart type="bar" :data="barChartData" :options="barChartOptions" class="h-full w-full" />
                     </div>
                 </div>
             </div>

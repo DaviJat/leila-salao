@@ -4,118 +4,101 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
-use App\Models\Service;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    /**
+     * Processa os dados do dashboard administrativo.
+     */
     public function index(Request $request)
     {
-        // default period: current month
-        $now = Carbon::now();
-        $start = $request->input('start_date', $now->copy()->startOfMonth()->format('Y-m-d'));
-        $end = $request->input('end_date', $now->copy()->endOfMonth()->format('Y-m-d'));
+        // Define o período de análise com base nos filtros fornecidos ou usa o mês atual como padrão.
+        $startDate = $request->input('start_date', Carbon::now()->startOfMonth()->format('Y-m-d'));
+        $endDate = $request->input('end_date', Carbon::now()->endOfMonth()->format('Y-m-d'));
 
-        $earnings = $this->aggregateEarnings($start, $end, 'day');
-        $topServices = $this->topServices($start, $end);
-        $appointmentsOverview = $this->appointmentsOverview($start, $end);
+        // Consulta os agendamentos dentro do período selecionado, incluindo as relações necessárias.
+        $appointments = Appointment::with(['availability', 'services'])
+            ->whereHas('availability', function ($query) use ($startDate, $endDate) {
+                $query->whereBetween('date', [$startDate, $endDate]);
+            })->get();
 
-        return inertia('Admin/Dashboard', [
-            'earnings' => $earnings,
-            'topServices' => $topServices,
-            'appointmentsOverview' => $appointmentsOverview,
+        // Cálculo dos KPIs principais.
+        $totalAgendamentos = $appointments->count();
+        $pendentes = $appointments->where('status', 'pending')->count();
+        $confirmados = $appointments->where('status', 'confirmed')->count();
+        $concluidos = $appointments->where('status', 'completed')->count();
+
+        // Determina se a análise será mensal ou diária com base na diferença entre as datas.
+        $diffDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate));
+        $isMonthly = $diffDays > 60;
+
+        $receitaPorPeriodo = [];
+
+        if ($isMonthly) {
+            $period = CarbonPeriod::create(Carbon::parse($startDate)->startOfMonth(), '1 month', Carbon::parse($endDate)->startOfMonth());
+            foreach ($period as $date) {
+                $receitaPorPeriodo[$date->format('m/Y')] = 0;
+            }
+        } else {
+            $period = CarbonPeriod::create($startDate, $endDate);
+            foreach ($period as $date) {
+                $receitaPorPeriodo[$date->format('d/m')] = 0;
+            }
+        }
+
+        $receitaTotal = 0;
+        $servicosCount = collect();
+
+        // Processamento dos dados de receita e contagem de serviços realizados.
+        foreach ($appointments as $app) {
+            if (in_array($app->status, ['confirmed', 'completed'])) {
+                if ($app->availability) {
+                    $date = Carbon::parse($app->availability->date);
+
+                    $key = $isMonthly ? $date->format('m/Y') : $date->format('d/m');
+
+                    if (array_key_exists($key, $receitaPorPeriodo)) {
+                        $price = $app->total_price;
+                        $receitaPorPeriodo[$key] += $price;
+                        $receitaTotal += $price;
+                    }
+                }
+            }
+
+            foreach ($app->services as $service) {
+                $servicosCount->push($service->name);
+            }
+        }
+
+        // Identificação dos serviços mais populares.
+        $topServicos = $servicosCount->countBy()->sortDesc()->take(5);
+
+        return Inertia::render('Admin/Dashboard', [
             'filters' => [
-                'start_date' => $start,
-                'end_date' => $end,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
             ],
-        ]);
-    }
-
-    public function data(Request $request)
-    {
-        $start = $request->input('start_date');
-        $end = $request->input('end_date');
-        $group = $request->input('group', 'day'); // day|month|year
-
-        $earnings = $this->aggregateEarnings($start, $end, $group);
-        $topServices = $this->topServices($start, $end);
-        $overview = $this->appointmentsOverview($start, $end);
-
-        return response()->json([
-            'earnings' => $earnings,
-            'topServices' => $topServices,
-            'overview' => $overview,
-        ]);
-    }
-
-    protected function aggregateEarnings($start, $end, $group = 'day')
-    {
-        $format = match ($group) {
-            'month' => 'YYYY-MM',
-            'year' => 'YYYY',
-            default => 'YYYY-MM-DD',
-        };
-
-        $rows = Appointment::query()
-            ->join('appointment_service', 'appointments.id', '=', 'appointment_service.appointment_id')
-            ->join('services', 'appointment_service.service_id', '=', 'services.id')
-            ->join('availabilities', 'appointments.availability_id', '=', 'availabilities.id')
-            ->whereBetween('availabilities.date', [$start, $end])
-            ->where('appointments.status', 'completed')
-            ->selectRaw("TO_CHAR(availabilities.date, '{$format}') as period, SUM(services.price) as total")
-            ->groupBy('period')
-            ->orderBy('period')
-            ->get()
-            ->map(fn($r) => ['period' => $r->period, 'total' => (float) $r->total]);
-
-        return $rows->values();
-    }
-
-    protected function topServices($start, $end, $limit = 6)
-    {
-        $rows = Appointment::query()
-            ->join('appointment_service', 'appointments.id', '=', 'appointment_service.appointment_id')
-            ->join('services', 'appointment_service.service_id', '=', 'services.id')
-            ->join('availabilities', 'appointments.availability_id', '=', 'availabilities.id')
-            ->whereBetween('availabilities.date', [$start, $end])
-            ->where('appointments.status', 'completed')
-            ->selectRaw('services.id, services.name, COUNT(*) as performed')
-            ->groupBy('services.id', 'services.name')
-            ->orderByDesc('performed')
-            ->limit($limit)
-            ->get();
-
-        return $rows->map(fn($r) => ['id' => $r->id, 'name' => $r->name, 'performed' => (int) $r->performed])->values();
-    }
-
-    protected function appointmentsOverview($start, $end)
-    {
-        // total appointments by day in range and overall totals
-        $byDay = Appointment::query()
-            ->join('availabilities', 'appointments.availability_id', '=', 'availabilities.id')
-            ->whereBetween('availabilities.date', [$start, $end])
-            ->selectRaw("TO_CHAR(availabilities.date, 'YYYY-MM-DD') as day, COUNT(*) as total")
-            ->groupBy('day')
-            ->orderBy('day')
-            ->get()
-            ->map(fn($r) => ['day' => $r->day, 'total' => (int) $r->total]);
-
-        $totals = Appointment::query()
-            ->join('availabilities', 'appointments.availability_id', '=', 'availabilities.id')
-            ->whereBetween('availabilities.date', [$start, $end])
-            ->selectRaw("SUM(CASE WHEN appointments.status = 'pending' THEN 1 ELSE 0 END)::int as pending, SUM(CASE WHEN appointments.status = 'confirmed' THEN 1 ELSE 0 END)::int as confirmed, SUM(CASE WHEN appointments.status = 'canceled' THEN 1 ELSE 0 END)::int as canceled, SUM(CASE WHEN appointments.status = 'completed' THEN 1 ELSE 0 END)::int as completed")
-            ->first();
-
-        return [
-            'byDay' => $byDay->values(),
-            'totals' => [
-                'pending' => (int) ($totals->pending ?? 0),
-                'confirmed' => (int) ($totals->confirmed ?? 0),
-                'canceled' => (int) ($totals->canceled ?? 0),
-                'completed' => (int) ($totals->completed ?? 0),
+            'kpis' => [
+                'receitaTotal' => $receitaTotal,
+                'totalAgendamentos' => $totalAgendamentos,
+                'concluidos' => $concluidos,
+                'confirmados' => $confirmados,
+                'pendentes' => $pendentes,
             ],
-        ];
+            'charts' => [
+                'receita' => [
+                    'labels' => array_keys($receitaPorPeriodo),
+                    'data' => array_values($receitaPorPeriodo),
+                ],
+                'servicos' => [
+                    'labels' => $topServicos->keys()->toArray(),
+                    'data' => $topServicos->values()->toArray(),
+                ]
+            ]
+        ]);
     }
 }

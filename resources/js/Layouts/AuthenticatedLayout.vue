@@ -18,9 +18,9 @@ const isRouteActive = (routeName) => {
 
         <div class="relative z-10 flex flex-col min-h-screen">
             <div class="pt-6 px-4 sm:px-6 lg:px-8 w-full max-w-7xl mx-auto">
-                <nav class="bg-white rounded-full shadow-sm px-6 py-3 sm:px-8 flex items-center justify-between border border-gray-100">
+                <nav class="bg-white rounded-2xl shadow-sm px-6 py-3 sm:px-8 flex items-center justify-between border border-gray-100">
                     <div class="flex items-center gap-3">
-                        <Link :href="route('admin.dashboard')" class="flex items-center gap-3 transition-transform duration-300 hover:scale-105 group">
+                        <Link :href="route('admin.dashboard')" class="flex items-center gap-3">
                             <img src="/images/logo-cabeleila.svg" alt="Logo Cabeleila" class="h-8 sm:h-10 w-auto object-contain mb-1" />
                             <div class="hidden sm:flex items-center">
                                 <div class="h-8 w-px bg-gray-200 mr-3"></div>
