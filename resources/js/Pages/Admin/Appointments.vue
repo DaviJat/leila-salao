@@ -98,11 +98,63 @@ const formatPrice = (value) => {
     return price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-const openWhatsApp = (phone, name) => {
-    if (!phone) return;
+const buildWhatsAppUrl = (phone, message) => {
     const cleanPhone = String(phone).replace(/\D/g, '');
-    const text = encodeURIComponent(`Ola, ${name}! Estou falando sobre seu agendamento no Cabeleila.`);
-    window.open(`https://wa.me/55${cleanPhone}?text=${text}`, '_blank');
+    if (!cleanPhone || !message) return null;
+
+    return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
+};
+
+const openWhatsAppMessage = (phone, message) => {
+    const url = buildWhatsAppUrl(phone, message);
+    if (!url) return;
+
+    window.open(url, '_blank');
+};
+
+const openClientWhatsApp = (phone, name) => {
+    openWhatsAppMessage(phone, `Olá, ${name}! Estou falando sobre seu agendamento no Cabeleila.`);
+};
+
+const buildStatusMessage = (appointment, status) => {
+    if (!appointment?.client) return null;
+
+    const date = formatDate(appointment.availability?.date);
+    const time = formatTime(appointment.availability?.hour);
+
+    if (status === 'confirmed') {
+        return `✅ *Agendamento Confirmado!*
+
+Olá, ${appointment.client.full_name}! Seu horário para o dia *${date}* às *${time}* foi confirmado pela nossa equipe. Te esperamos ansiosamente!`;
+    }
+
+    if (status === 'canceled') {
+        return `❌ *Agendamento Cancelado*
+
+Olá, ${appointment.client.full_name}. Informamos que seu agendamento do dia *${date}* às *${time}* foi cancelado. Se desejar, acesse nosso site para reagendar uma nova data.`;
+    }
+
+    return null;
+};
+
+const buildAdminActionMessage = (appointment, isNew = false) => {
+    if (!appointment?.client) return null;
+
+    const date = formatDate(appointment.availability?.date);
+    const time = formatTime(appointment.availability?.hour);
+    const services = (appointment.services || []).map((service) => service.name).join(', ');
+    const action = isNew ? 'foi agendado' : 'foi remarcado';
+    const intro = isNew ? '🎉 *Novo Agendamento!*' : '🔄 *Agendamento Alterado*';
+
+    return `${intro}
+
+Olá, ${appointment.client.full_name}! Um horário ${action} para você no salão:
+
+📅 *Data:* ${date}
+⏰ *Hora:* ${time}
+✂️ *Serviços:* ${services}
+
+Para gerenciar seus horários, acesse nosso site.`;
 };
 
 let searchTimeout = null;
@@ -182,11 +234,19 @@ const updateStatus = (appointment, status) => {
 const confirmStatusUpdate = () => {
     if (!appointmentToUpdateStatus.value || !statusToConfirm.value) return;
 
+    const appointment = appointmentToUpdateStatus.value;
+    const status = statusToConfirm.value;
+
     statusForm
-        .transform(() => ({ status: statusToConfirm.value }))
+        .transform(() => ({ status }))
         .patch(route('admin.appointments.status', appointmentToUpdateStatus.value.id), {
             preserveScroll: true,
             onSuccess: () => {
+                const message = buildStatusMessage(appointment, status);
+                if (message) {
+                    openWhatsAppMessage(appointment.client?.phone, message);
+                }
+
                 statusModalVisible.value = false;
                 appointmentToUpdateStatus.value = null;
                 statusToConfirm.value = null;
@@ -262,11 +322,15 @@ const toggleCreateService = (service) => {
 
 const submitCreate = () => {
     const phone = createForm.client_phone.replace(/\D/g, '');
-    const date = formatDateDisplay(createForm.date);
-    const time = createForm.time.substring(0, 5);
-    const services = createForm.services.map((s) => s.name).join(', ');
+    const message = `🎉 *Novo Agendamento!*
 
-    const waText = `🎉 *Novo Agendamento!*\n\nOlá, ${createForm.client_name}! Um horário foi agendado para você no salão:\n\n📅 *Data:* ${date}\n⏰ *Hora:* ${time}\n✂️ *Serviços:* ${services}\n\nPara gerenciar seus horários, acesse nosso site.`;
+Olá, ${createForm.client_name}! Um horário foi agendado para você no salão:
+
+📅 *Data:* ${formatDateDisplay(createForm.date)}
+⏰ *Hora:* ${createForm.time.substring(0, 5)}
+✂️ *Serviços:* ${createForm.services.map((s) => s.name).join(', ')}
+
+Para gerenciar seus horários, acesse nosso site.`;
 
     createForm
         .transform((data) => ({
@@ -278,7 +342,7 @@ const submitCreate = () => {
                 isCreateModalOpen.value = false;
                 createForm.reset();
                 applyFilters();
-                window.open(`https://wa.me/55${phone}?text=${encodeURIComponent(waText)}`, '_blank');
+                openWhatsAppMessage(phone, message);
             },
         });
 };
@@ -383,9 +447,11 @@ const openEditModal = (appointment) => {
 const submitEdit = () => {
     if (!selectedAppointment.value) return;
 
-    const initialDate = String(selectedAppointment.value.availability?.date || '').substring(0, 10);
-    const initialTime = formatTime(selectedAppointment.value.availability?.hour);
-    const initialServices = (selectedAppointment.value.services || [])
+    const appointment = selectedAppointment.value;
+
+    const initialDate = String(appointment.availability?.date || '').substring(0, 10);
+    const initialTime = formatTime(appointment.availability?.hour);
+    const initialServices = (appointment.services || [])
         .map((service) => service.id)
         .sort()
         .join(',');
@@ -403,11 +469,28 @@ const submitEdit = () => {
         .put(route('admin.appointments.update', selectedAppointment.value.id), {
             preserveScroll: true,
             onSuccess: () => {
-                editModalVisible.value = false;
-                selectedAppointment.value = null;
                 if (hasChanges) {
+                    const message = buildAdminActionMessage(
+                        {
+                            client: appointment.client,
+                            availability: {
+                                date: editForm.date,
+                                hour: `${editForm.time.length === 5 ? editForm.time : editForm.time.substring(0, 5)}:00`,
+                            },
+                            services: editForm.services,
+                        },
+                        false,
+                    );
+
+                    if (message) {
+                        openWhatsAppMessage(appointment.client?.phone, message);
+                    }
+
                     applyFilters();
                 }
+
+                editModalVisible.value = false;
+                selectedAppointment.value = null;
             },
         });
 };
@@ -532,7 +615,7 @@ const submitEdit = () => {
                                 <button
                                     type="button"
                                     class="text-xs text-[#547558] hover:underline"
-                                    @click="openWhatsApp(slotProps.data.client?.phone, slotProps.data.client?.full_name)">
+                                    @click="openClientWhatsApp(slotProps.data.client?.phone, slotProps.data.client?.full_name)">
                                     {{ formatPhone(slotProps.data.client?.phone) || 'Sem telefone' }}
                                 </button>
                             </div>

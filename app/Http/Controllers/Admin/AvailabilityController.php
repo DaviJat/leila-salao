@@ -192,12 +192,12 @@ class AvailabilityController extends Controller
             'status' => $request->input('status', []),
             'start_date' => $request->input('start_date', ''),
             'end_date' => $request->input('end_date', ''),
-            'per_page' => in_array($request->input('per_page', 10), [10, 20, 50])
-                ? $request->input('per_page')
+            'per_page' => in_array((int) $request->input('per_page', 10), [10, 20, 50], true)
+                ? (int) $request->input('per_page', 10)
                 : 10,
             'sort_field' => $request->input('sort_field', 'date'),
-            'sort_order' => in_array($request->input('sort_order'), [1, -1])
-                ? $request->input('sort_order')
+            'sort_order' => in_array((int) $request->input('sort_order', 1), [1, -1], true)
+                ? (int) $request->input('sort_order', 1)
                 : 1,
         ];
     }

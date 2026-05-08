@@ -7,7 +7,6 @@ use App\Models\Appointment;
 use App\Models\Availability;
 use App\Models\Client;
 use App\Models\Service;
-use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -151,7 +150,7 @@ class AppointmentController extends Controller
         return back()->with('success', 'Agendamento criado!');
     }
 
-    public function updateStatus(Request $request, int $id, WhatsAppService $whatsAppService)
+    public function updateStatus(Request $request, int $id)
     {
         $request->validate(['status' => 'required|in:pending,confirmed,canceled,completed']);
 
@@ -169,14 +168,10 @@ class AppointmentController extends Controller
 
         $appointment->update(['status' => $request->status]);
 
-        if (in_array($newStatus, ['confirmed', 'canceled'], true) && $appointment->client) {
-            $whatsAppService->sendStatusNotification($appointment->client, $appointment, $newStatus);
-        }
-
         return back()->with('success', 'Status atualizado!');
     }
 
-    public function update(Request $request, int $id, WhatsAppService $whatsAppService)
+    public function update(Request $request, int $id)
     {
         $request->validate([
             'date' => 'required|date',
@@ -210,14 +205,6 @@ class AppointmentController extends Controller
         // Atualiza os serviços (adiciona/remove do banco)
         $serviceIds = collect($request->services)->pluck('id');
         $appointment->services()->sync($serviceIds);
-
-        $appointment->load(['client', 'availability', 'services']);
-        $updatedServiceIds = $appointment->services->pluck('id')->sort()->values()->all();
-        $hasChanges = $previousDate !== $request->date || $previousTime !== $newTime || $previousServiceIds !== $updatedServiceIds;
-
-        if ($hasChanges && $appointment->client) {
-            $whatsAppService->sendAdminActionNotification($appointment->client, $appointment, false);
-        }
 
         return back()->with('success', 'Agendamento atualizado com sucesso!');
     }
