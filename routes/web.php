@@ -23,7 +23,7 @@ Route::get('/dashboard', function () {
 
 // Rotas do Painel Administrativo (Protegidas por autenticação)
 Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/agendamentos', [AdminAppointmentController::class, 'index'])->name('appointments.index');
     Route::post('/agendamentos', [AdminAppointmentController::class, 'store'])->name('appointments.store');

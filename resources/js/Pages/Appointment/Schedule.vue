@@ -92,7 +92,20 @@ const calendarDays = computed(() => {
 
 const availableTimesForSelectedDate = computed(() => {
     if (!form.date) return [];
-    return props.availableSlots[form.date] || [];
+    const times = [...(props.availableSlots[form.date] || [])];
+
+    // Se estiver editando e a data for a mesma do agendamento original, incluir o horário original
+    if (isEditing.value && props.editingAppointment) {
+        const originalDate = String(props.editingAppointment.availability.date).substring(0, 10);
+        const originalTime = String(props.editingAppointment.availability.hour).substring(0, 5);
+
+        if (form.date === originalDate && !times.includes(originalTime)) {
+            times.push(originalTime);
+            times.sort();
+        }
+    }
+
+    return times;
 });
 
 const selectDate = (day) => {
@@ -154,6 +167,9 @@ onMounted(() => {
 
     if (props.editingAppointment) {
         form.services = [...props.editingAppointment.services];
+        // Pré-selecionar data e hora do agendamento atual
+        form.date = String(props.editingAppointment.availability.date).substring(0, 10);
+        form.time = String(props.editingAppointment.availability.hour).substring(0, 5);
     }
 });
 
